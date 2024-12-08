@@ -1,9 +1,14 @@
 on:
   workflow_call:
     inputs:
-      current_version:
+      validation:
+        required: false
+        type: string
+
+      deploy:
         required: true
         type: string
+
 
 jobs:
   update_version_and_changelog:
@@ -21,7 +26,12 @@ jobs:
         with:
           java-version: '11'
           distribution: 'temurin'
-          
+
+      - name: Validate
+        id: validation
+        run: |
+          ${{ inputs.validation }}
+
       - name: Read current version
         id: read_version
         run: |
@@ -193,9 +203,10 @@ jobs:
         run: |
           sed -i "s/version=${{ env.current_version }}/version=${{ env.new_version }}/" version.properties
 
-      #      - name: Run Gradle publish
-      #        if: env.pr_details != '[]'
-      #        run: ./gradlew publishToMavenRepository
+      - name: Deploy
+        id: deploy
+        run: |
+          ${{ inputs.deploy }}
 
       - name: Commit and push changes
         if: env.pr_numbers != '' && env.pr_details != '[]'
