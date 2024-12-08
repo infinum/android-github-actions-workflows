@@ -1,0 +1,15 @@
+on:
+  workflow_call:
+    inputs:
+      current_version:
+        required: true
+        type: string
+
+jobs:
+  update_version_and_changelog:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Read current version
+      id: read_version
+      run: |
+        echo "Current version is ${{ inputs.current_version }}"
