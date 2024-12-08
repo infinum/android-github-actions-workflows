@@ -9,7 +9,199 @@ jobs:
   update_version_and_changelog:
     runs-on: ubuntu-latest
     steps:
-    - name: Read current version
-      id: read_version
-      run: |
-        echo "Current version is ${{ inputs.current_version }}"
+      - name: Read current version
+        id: read_version
+        run: |
+          version=$(grep 'version=' version.properties | cut -d'=' -f2)
+          echo "current_version=$version" >> $GITHUB_ENV
+          echo "current_version=$version"
+
+      - name: Find corresponding tag
+        id: find_tag
+        run: |
+          tag="v${{ env.current_version }}"
+          echo "tag=$tag" >> $GITHUB_ENV
+          echo "tag=$tag"
+
+      - name: Get commits since last tag
+        id: get_commits
+        run: |
+          git fetch origin tag ${{ env.tag }}
+          commits=$(git log ${{ env.tag }}..HEAD --pretty=format:"%H" | tr '\n' ' ')
+          echo "commits=$commits" >> $GITHUB_ENV
+          echo "commits=$commits"
+
+      - name: Get pull requests for commits
+        id: get_pull_requests
+        if: env.commits != ''
+        run: |
+          pr_numbers=""
+          pr_details=""
+          for commit in ${{ env.commits }}; do
+            echo "Processing $commit..."
+            prs=$(gh pr list --search "$commit" --state merged --json number,mergedAt --jq '.[] | {number: .number, mergedAt: .mergedAt}')
+            pr_details="$pr_details $prs"
+          done
+          pr_numbers=$(echo "$pr_details" | jq -s 'sort_by(.mergedAt) | .[].number' | tr '\n' ' ' | xargs)
+          if [ -z "$pr_numbers" ]; then
+            echo "Pull requests with commits ${{ env.commits }} not found! Skipping the release."
+            echo "pr_numbers=$pr_numbers" >> $GITHUB_ENV
+            pr_details="[]"
+            echo "pr_details=$pr_details" >> $GITHUB_ENV
+            exit 0
+          else
+            echo "pr_numbers=$pr_numbers" >> $GITHUB_ENV
+          fi
+          echo "pr_numbers=$pr_numbers"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pull request details
+        id: get_pr_details
+        if: env.pr_numbers != ''
+        run: |
+          pr_details="[]"
+          breaking_change=false
+          new_feature=false
+          bugfix=false
+
+          # Get the most recent PR
+          most_recent_pr=$(echo "${{ env.pr_numbers }}" | awk '{print $NF}')
+          most_recent_pr_detail=$(gh pr view $most_recent_pr --json title,body,labels,author --jq '{title: .title, body: .body, labels: [.labels[].name], number: .number, author: .author.login}')
+          echo "$most_recent_pr_detail"
+          most_recent_labels=$(echo "$most_recent_pr_detail" | jq -r '.labels[]')
+
+          # Check if the most recent PR has the skip_release label
+          for label in $most_recent_labels; do
+            if [[ "$label" == "skip-release" ]]; then
+              echo "Most recent PR has skip-release label. Skipping the release."
+              pr_details="[]"
+              echo "pr_details=$pr_details" >> $GITHUB_ENV
+              exit 0
+            fi
+          done
+
+          # Process all PRs
+          for pr in ${{ env.pr_numbers }}; do
+            pr_detail=$(gh pr view $pr --json title,body,labels,number,author --jq '{title: .title, body: .body, labels: [.labels[].name], number: .number, author: .author.login}')
+            echo "$pr_detail"
+            pr_details=$(echo "$pr_details" | jq --argjson pr_detail "$pr_detail" '. + [$pr_detail]')
+            labels=$(echo "$pr_detail" | jq -r '.labels[]')
+            if [[ "$labels" == *"breaking-change"* ]]; then
+              breaking_change=true
+            elif [[ "$labels" == *"new-feature"* ]]; then
+              new_feature=true
+            elif [[ "$labels" == *"bugfix"* ]]; then
+              bugfix=true
+            fi
+          done
+          echo "pr_details=$(echo "$pr_details" | jq -c '.')" >> $GITHUB_ENV
+          echo "breaking_change=$breaking_change" >> $GITHUB_ENV
+          echo "new_feature=$new_feature" >> $GITHUB_ENV
+          echo "bugfix=$bugfix" >> $GITHUB_ENV
+
+          echo "pr_details=$pr_details"
+          echo "breaking_change=$breaking_change"
+          echo "new_feature=$new_feature"
+          echo "bugfix=$bugfix"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update version
+        if: env.pr_numbers != '' && env.pr_details != '[]'
+        id: update_version
+        run: |
+          IFS='.' read -r -a version_parts <<< "${{ env.current_version }}"
+          major=${version_parts[0]}
+          minor=${version_parts[1]}
+          patch=${version_parts[2]}
+          if ${{ env.breaking_change }} && [ "$major" -ne 0 ]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif ${{ env.new_feature }}; then
+            minor=$((minor + 1))
+            patch=0
+          elif ${{ env.bugfix }}; then
+            patch=$((patch + 1))
+          else
+            minor=$((minor + 1))
+            patch=0
+          fi
+          new_version="$major.$minor.$patch"
+          echo "new_version=$new_version" >> $GITHUB_ENV
+          echo "new_version=$new_version"
+
+      - name: Generate changelog
+        if: env.pr_numbers != '' && env.pr_details != '[]'
+        id: generate_changelog
+        run: |
+          pr_details=$(echo '${{ env.pr_details }}' | jq -c '.')
+          breaking_changes=$(echo "$pr_details" | jq -r 'map(select(.labels | index("breaking-change"))) | .[] | "- \(.title) by @\(.author) in #\(.number)"')
+          new_features=$(echo "$pr_details" | jq -r 'map(select(.labels | index("new-feature"))) | .[] | "- \(.title) by @\(.author) in #\(.number)"')
+          bugfixes=$(echo "$pr_details" | jq -r 'map(select(.labels | index("bugfix"))) | .[] | "- \(.title) by @\(.author) in #\(.number)"')
+
+          if [ -n "$breaking_changes" ]; then
+            changelog+="### Breaking Changes\n"
+            while IFS= read -r line; do
+              changelog+="$line\n"
+            done <<< "$breaking_changes"
+            changelog+="\n"
+          fi
+
+          if [ -n "$new_features" ]; then
+            changelog+="### New Features\n"
+            while IFS= read -r line; do
+              changelog+="$line\n"
+            done <<< "$new_features"
+            changelog+="\n"
+          fi
+
+          if [ -n "$bugfixes" ]; then
+            changelog+="### Bug Fixes\n"
+            while IFS= read -r line; do
+              changelog+="$line\n"
+            done <<< "$bugfixes"
+            changelog+="\n"
+          fi
+
+          changelog+="\n\n**Full Changelog**: [v${{ env.current_version }}...v${{ env.new_version }}](https://github.com/${{ github.repository }}/compare/v${{ env.current_version }}...v${{ env.new_version }})\n"
+
+          echo "$changelog"
+          echo -e "$changelog" > changelog_temp.md
+
+      - name: Update CHANGELOG.md
+        if: env.pr_numbers != '' && env.pr_details != '[]'
+        run: |
+          echo -e "## v${{ env.new_version }}\n\n$(cat changelog_temp.md)\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+
+      - name: Update version.properties
+        if: env.pr_numbers != ''&& env.pr_details != '[]'
+        run: |
+          sed -i "s/version=${{ env.current_version }}/version=${{ env.new_version }}/" version.properties
+
+      #      - name: Run Gradle publish
+      #        if: env.pr_details != '[]'
+      #        run: ./gradlew publishToMavenRepository
+
+      - name: Commit and push changes
+        if: env.pr_numbers != '' && env.pr_details != '[]'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md version.properties
+          git commit -m "Update version to ${{ env.new_version }} and update changelog"
+          git push
+
+      - name: Create and push tag
+        if: env.pr_numbers != '' && env.pr_details != '[]'
+        run: |
+          git tag "v${{ env.new_version }}"
+          git push origin "v${{ env.new_version }}"
+
+      - name: Create GitHub release
+        if: env.pr_numbers != '' && env.pr_details != '[]'
+        run: |
+          gh release create "v${{ env.new_version }}" --title "v${{ env.new_version }}" --notes-file changelog_temp.md --verify-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
