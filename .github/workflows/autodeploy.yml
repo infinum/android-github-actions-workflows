@@ -70,28 +70,11 @@ jobs:
 
       - name: Get pull requests for commits
         id: get_pull_requests
-        if: env.commits != ''
-        run: |
-          pr_numbers=""
-          pr_details=""
-          for commit in ${{ env.commits }}; do
-            echo "Processing $commit..."
-            prs=$(gh pr list --search "$commit" --state merged --json number,mergedAt --jq '.[] | {number: .number, mergedAt: .mergedAt}')
-            pr_details="$pr_details $prs"
-          done
-          pr_numbers=$(echo "$pr_details" | jq -s 'sort_by(.mergedAt) | .[].number' | tr '\n' ' ' | xargs)
-          if [ -z "$pr_numbers" ]; then
-            echo "Pull requests with commits ${{ env.commits }} not found! Skipping the release."
-            echo "pr_numbers=$pr_numbers" >> $GITHUB_ENV
-            pr_details="[]"
-            echo "pr_details=$pr_details" >> $GITHUB_ENV
-            exit 0
-          else
-            echo "pr_numbers=$pr_numbers" >> $GITHUB_ENV
-          fi
-          echo "pr_numbers=$pr_numbers"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ steps.get_commits.outputs.commits }} != ''
+        uses: infinum/android-github-actions-workflows/.github/actions/find_pull_requests@main
+        with:
+          commits: ${{ steps.get_commits.outputs.commits }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get pull request details
         id: get_pr_details
