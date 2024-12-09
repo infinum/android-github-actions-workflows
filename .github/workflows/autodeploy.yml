@@ -208,6 +208,9 @@ jobs:
         #if: env.pr_numbers != '' && env.pr_details != '[]'
         run: |
           ${{ inputs.deploy }}
+        env:
+          DEPLOY_IN_MEMORY_SIGNING_KEY: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_KEY }}
+          DEPLOY_IN_MEMORY_SIGNING_PASSWORD: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_PASSWORD }}
 
       - name: Commit and push changes
         if: env.pr_numbers != '' && env.pr_details != '[]'
