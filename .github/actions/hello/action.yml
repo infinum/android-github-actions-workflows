@@ -1,0 +1,20 @@
+name: 'Hello World'
+description: 'Greet someone'
+inputs:
+  who-to-greet:
+    description: 'Who to greet'
+    required: true
+    default: 'World'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Greet
+      run: echo "Hello $GREETING_INPUT!"
+      env:
+        GREETING_INPUT: ${{ inputs.who-to-greet }}
+    
+    - name: Goodbye
+      run: echo "Goodbye $GREETING_INPUT!"
+      env:
+        GREETING_INPUT: ${{ inputs.who-to-greet }}
