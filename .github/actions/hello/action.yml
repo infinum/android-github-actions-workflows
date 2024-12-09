@@ -11,10 +11,12 @@ runs:
   steps:
     - name: Greet
       run: echo "Hello $GREETING_INPUT!"
+      shell: bash
       env:
         GREETING_INPUT: ${{ inputs.who-to-greet }}
     
     - name: Goodbye
       run: echo "Goodbye $GREETING_INPUT!"
+      shell: bash
       env:
         GREETING_INPUT: ${{ inputs.who-to-greet }}
