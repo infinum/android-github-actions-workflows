@@ -1,0 +1,27 @@
+name: 'Find commits from tag until the HEAD'
+description: 'Finds the commits from the current tag until the HEAD'
+
+inputs:
+  tag:
+    description: 'The tag to find the commits from'
+    required: true
+
+outputs:
+  commits:
+    description: 'The commits from the tag until the HEAD separated by spaces'
+    value: ${{ steps.find_commits.outputs.commits }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Find commits from tag until the HEAD
+      id: find_commits
+      shell: bash
+      env:
+        FIND_COMMITS_TAG: ${{ inputs.tag }}
+      run: |
+        git fetch origin tag "$FIND_COMMITS_TAG"
+        commits=$(git log ${{ env.tag }}..HEAD --pretty=format:"%H" | tr '\n' ' ')
+        echo "commits=$commits" >> $GITHUB_ENV
+        echo "commits=$commits" >> $GITHUB_OUTPUT
+        echo "commits=$commits"

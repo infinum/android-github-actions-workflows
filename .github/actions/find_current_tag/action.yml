@@ -1,0 +1,26 @@
+name: 'Find current tag'
+description: 'Finds the current tag based on the current version'
+
+inputs:
+  current_version:
+    description: 'The current version to find the tag for'
+    required: true
+
+outputs:
+  current_tag:
+    description: 'The current tag found based on the current version'
+    value: ${{ steps.find_current_tag.outputs.current_tag }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Find current tag
+      id: find_current_tag
+      shell: bash
+      env:
+        CURRENT_VERSION: ${{ inputs.current_version }}
+      run: |
+        tag="v$CURRENT_VERSION"
+        echo "tag=$tag" >> $GITHUB_ENV
+        echo "current_tag=$tag" >> $GITHUB_OUTPUT
+        echo "tag=$tag"

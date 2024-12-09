@@ -58,18 +58,15 @@ jobs:
 
       - name: Find corresponding tag
         id: find_tag
-        run: |
-          tag="v${{ env.current_version }}"
-          echo "tag=$tag" >> $GITHUB_ENV
-          echo "tag=$tag"
+        uses: infinum/android-github-actions-workflows/.github/actions/find_current_tag@main
+        with:
+          current_version: ${{ steps.read_version.outputs.current_version }}
 
       - name: Get commits since last tag
         id: get_commits
-        run: |
-          git fetch origin tag ${{ env.tag }}
-          commits=$(git log ${{ env.tag }}..HEAD --pretty=format:"%H" | tr '\n' ' ')
-          echo "commits=$commits" >> $GITHUB_ENV
-          echo "commits=$commits"
+        uses: infinum/android-github-actions-workflows/.github/actions/commits_since_tag@main
+        with:
+          tag: ${{ steps.find_tag.outputs.current_tag }}
 
       - name: Get pull requests for commits
         id: get_pull_requests
