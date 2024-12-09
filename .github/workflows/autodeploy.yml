@@ -209,6 +209,8 @@ jobs:
         run: |
           ${{ inputs.deploy }}
         env:
+          MAVEN_CENTRAL_USER: ${{ secrets.MAVEN_CENTRAL_USER }}
+          MAVEN_CENTRAL_PW: ${{ secrets.MAVEN_CENTRAL_PW }}
           DEPLOY_IN_MEMORY_SIGNING_KEY: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_KEY }}
           DEPLOY_IN_MEMORY_SIGNING_PASSWORD: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_PASSWORD }}
 
