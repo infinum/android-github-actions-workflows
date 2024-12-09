@@ -54,7 +54,7 @@ jobs:
 
       - name: Read current version
         id: read_version
-        uses: ./.github/actions/read_current_version
+        uses: infinum/android-github-actions-workflows/.github/actions/read_current_version@main
 
       - name: Find corresponding tag
         id: find_tag

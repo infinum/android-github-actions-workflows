@@ -16,11 +16,12 @@ runs:
   using: 'composite'
   steps:
     - name: Read version
+      id: read_version
       shell: bash
       env:
-        GREETING_INPUT: ${{ inputs.who-to-greet }}
+        CURRENT_VERSION_FILENAME: ${{ inputs.filename }}
       run: |
-        version=$(grep 'version=' version.properties | cut -d'=' -f2)
+        version=$(grep 'version=' "$CURRENT_VERSION_FILENAME" | cut -d'=' -f2)
         echo "current_version=$version" >> $GITHUB_ENV
         echo "current_version=$version" >> $GITHUB_OUTPUT
         echo "current_version=$version"
