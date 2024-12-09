@@ -1,0 +1,16 @@
+name: 'Find pull requests'
+description: 'Finds the pull requests for the commits'
+inputs:
+  commits:
+    description: 'The commits for which to find the pull requests'
+    required: true
+  github_token:
+    description: 'The GitHub token'
+    required: true
+    default: ${{ secrets.GITHUB_TOKEN }}
+outputs:
+  pr_numbers:
+    description: 'The pull request numbers'
+runs:
+  using: 'node20'
+  main: 'index.js'
