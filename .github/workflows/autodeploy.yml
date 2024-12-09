@@ -204,6 +204,7 @@ jobs:
         id: deploy
         #if: env.pr_numbers != '' && env.pr_details != '[]'
         run: |
+          exit 1
           ${{ inputs.deploy }}
         env:
           MAVEN_CENTRAL_USER: ${{ secrets.MAVEN_CENTRAL_USER }}
