@@ -205,7 +205,7 @@ jobs:
 
       - name: Deploy
         id: deploy
-        if: env.pr_numbers != '' && env.pr_details != '[]'
+        #if: env.pr_numbers != '' && env.pr_details != '[]'
         run: |
           ${{ inputs.deploy }}
 
