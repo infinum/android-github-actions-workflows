@@ -7,7 +7,6 @@ inputs:
   github_token:
     description: 'The GitHub token'
     required: true
-    default: ${{ secrets.GITHUB_TOKEN }}
 outputs:
   pr_numbers:
     description: 'The pull request numbers'
