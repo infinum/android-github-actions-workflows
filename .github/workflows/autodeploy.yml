@@ -54,10 +54,7 @@ jobs:
 
       - name: Read current version
         id: read_version
-        run: |
-          version=$(grep 'version=' version.properties | cut -d'=' -f2)
-          echo "current_version=$version" >> $GITHUB_ENV
-          echo "current_version=$version"
+        uses: ./.github/actions/read_current_version
 
       - name: Find corresponding tag
         id: find_tag
