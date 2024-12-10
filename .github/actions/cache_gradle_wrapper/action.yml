@@ -1,0 +1,15 @@
+name: 'Cache gradle wrapper'
+description: 'Caches the gradle wrapper to speed up the build'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Cache Gradle wrapper
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/wrapper
+          ./gradle/wrapper
+        key: ${{ runner.os }}-gradle-wrapper-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-wrapper-

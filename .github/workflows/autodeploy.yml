@@ -1,10 +1,6 @@
 on:
   workflow_call:
     inputs:
-      validation:
-        required: false
-        type: string
-
       deploy:
         required: true
         type: string
@@ -28,93 +24,22 @@ jobs:
           distribution: 'temurin'
 
       - name: Cache Gradle wrapper
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/wrapper
-            ./gradle/wrapper
-          key: ${{ runner.os }}-gradle-wrapper-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-wrapper-
+        id: cache_gradle_wrapper
+        uses: infinum/android-github-actions-workflows/.github/actions/cache_gradle_wrapper@main
 
       - name: Cache Gradle dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-caches-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-caches-
+        id: cache_gradle
+        uses: infinum/android-github-actions-workflows/.github/actions/cache_gradle@main
 
-      - name: Read current version
-        id: read_version
-        uses: infinum/android-github-actions-workflows/.github/actions/read_current_version@main
-
-      - name: Find corresponding tag
-        id: find_tag
-        uses: infinum/android-github-actions-workflows/.github/actions/find_current_tag@main
+      - name: Run predeploy steps using version.properties
+        id: predeploy_steps_properties
+        uses: infinum/android-github-actions-workflows/.github/actions/common_modules_predeploy_properties@main
         with:
-          current_version: ${{ steps.read_version.outputs.current_version }}
-
-      - name: Get commits since last tag
-        id: get_commits
-        uses: infinum/android-github-actions-workflows/.github/actions/commits_since_tag@main
-        with:
-          tag: ${{ steps.find_tag.outputs.current_tag }}
-
-      - name: Get pull requests for commits
-        id: get_pull_requests
-        if: steps.get_commits.outputs.commits
-        uses: infinum/android-github-actions-workflows/.github/actions/find_pull_requests@main
-        with:
-          commits: ${{ steps.get_commits.outputs.commits }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get pull request details
-        id: get_pr_details
-        if: steps.get_pull_requests.outputs.pr_numbers
-        uses: infinum/android-github-actions-workflows/.github/actions/get_pull_request_details@main
-        with:
-          pr_numbers: ${{ steps.get_pull_requests.outputs.pr_numbers }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update version
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-        id: update_version
-        uses: infinum/android-github-actions-workflows/.github/actions/update_version@main
-        with:
-          current_version: ${{ steps.read_version.outputs.current_version }}
-          breaking_change: ${{ steps.get_pr_details.outputs.is_breaking_change }}
-          new_feature: ${{ steps.get_pr_details.outputs.is_new_feature }}
-          bugfix: ${{ steps.get_pr_details.outputs.is_bugfix }}
-
-      - name: Generate changelog
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-        id: generate_changelog
-        uses: infinum/android-github-actions-workflows/.github/actions/generate_changelog@main
-        with:
-          pr_details: ${{ steps.get_pr_details.outputs.pr_details }}
-          current_version: ${{ steps.read_version.outputs.current_version }}
-          updated_version: ${{ steps.update_version.outputs.updated_version }}
-        
-      - name: Update CHANGELOG.md
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-        uses: infinum/android-github-actions-workflows/.github/actions/update_changelog@main
-        with:
-          changelog: ${{ steps.generate_changelog.outputs.changelog }}
-          updated_version: ${{ steps.update_version.outputs.updated_version }}
-
-      - name: Update version.properties
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-        uses: infinum/android-github-actions-workflows/.github/actions/write_updated_version@main
-        with:
-          updated_version: ${{ steps.update_version.outputs.updated_version }}
-          current_version: ${{ steps.read_version.outputs.current_version }}
 
       - name: Deploy
         id: deploy
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
+        if: steps.predeploy_steps_properties.outputs.pr_numbers && steps.predeploy_steps_properties.outputs.pr_details != '[]'
         run: |
           ${{ inputs.deploy }}
         env:
@@ -124,21 +49,10 @@ jobs:
           DEPLOY_IN_MEMORY_SIGNING_PASSWORD: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_PASSWORD }}
 
       - name: Commit and push changes
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-        uses: infinum/android-github-actions-workflows/.github/actions/push_version_update@main
+        if: steps.predeploy_steps_properties.outputs.pr_numbers && steps.predeploy_steps_properties.outputs.pr_details != '[]'
+        uses: infinum/android-github-actions-workflows/.github/actions/common_modules_postdeploy@main
         with:
-          commit_message: "Update version to ${{ steps.update_version.outputs.updated_version }}"
-
-      - name: Create and push tag
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-        uses: infinum/android-github-actions-workflows/.github/actions/push_version_tag@main
-        with:
-          updated_version: ${{ steps.update_version.outputs.updated_version }}
-
-      - name: Create GitHub release
-        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-        uses: infinum/android-github-actions-workflows/.github/actions/create_github_release@main
-        with:
-          updated_version: ${{ steps.update_version.outputs.updated_version }}
-          changelog: ${{ steps.generate_changelog.outputs.changelog }}
+          current_version: ${{ steps.predeploy_steps_properties.outputs.current_version }}
+          updated_version: ${{ steps.predeploy_steps_properties.outputs.updated_version }}
+          changelog: ${{ steps.predeploy_steps_properties.outputs.changelog }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

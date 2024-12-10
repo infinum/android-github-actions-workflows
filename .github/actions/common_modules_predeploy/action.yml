@@ -1,0 +1,101 @@
+name: 'Update version and generate changelog'
+description: 'Updates the version and generates the changelog based on the pull request details'
+
+inputs:
+  current_version:
+    description: 'The current version'
+    required: true
+  github_token:
+    description: 'The GitHub token'
+    required: true
+  changelog_filename:
+    description: 'The name of the file to write the changelog to'
+    required: true
+    default: 'CHANGELOG.md'
+
+outputs:
+  updated_version:
+    description: 'The updated version'
+    value: ${{ steps.update_version.outputs.updated_version }}
+  current_tag:
+    description: 'The current tag'
+    value: ${{ steps.find_tag.outputs.current_tag }}
+  commits:
+    description: 'The commits since the last tag'
+    value: ${{ steps.get_commits.outputs.commits }}
+  pr_numbers:
+    description: 'The pull request numbers'
+    value: ${{ steps.get_pull_requests.outputs.pr_numbers }}
+  pr_details:
+    description: 'The pull request details'
+    value: ${{ steps.get_pr_details.outputs.pr_details }}
+  is_breaking_change:
+    description: 'Whether the pull request contains a breaking change'
+    value: ${{ steps.get_pr_details.outputs.is_breaking_change }}
+  is_new_feature:
+    description: 'Whether the pull request contains a new feature'
+    value: ${{ steps.get_pr_details.outputs.is_new_feature }}
+  is_bugfix:
+    description: 'Whether the pull request contains a bugfix'
+    value: ${{ steps.get_pr_details.outputs.is_bugfix }}
+  changelog:
+    description: 'The generated changelog'
+    value: ${{ steps.generate_changelog.outputs.changelog }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Find corresponding tag
+      id: find_tag
+      uses: infinum/android-github-actions-workflows/.github/actions/find_current_tag@main
+      with:
+        current_version: ${{ steps.read_version.outputs.current_version }}
+
+    - name: Get commits since last tag
+      id: get_commits
+      uses: infinum/android-github-actions-workflows/.github/actions/commits_since_tag@main
+      with:
+        tag: ${{ steps.find_tag.outputs.current_tag }}
+
+    - name: Get pull requests for commits
+      id: get_pull_requests
+      if: steps.get_commits.outputs.commits
+      uses: infinum/android-github-actions-workflows/.github/actions/find_pull_requests@main
+      with:
+        commits: ${{ steps.get_commits.outputs.commits }}
+        github_token: ${{ inputs.github_token }}
+
+    - name: Get pull request details
+      id: get_pr_details
+      if: steps.get_pull_requests.outputs.pr_numbers
+      uses: infinum/android-github-actions-workflows/.github/actions/get_pull_request_details@main
+      with:
+        pr_numbers: ${{ steps.get_pull_requests.outputs.pr_numbers }}
+        github_token: ${{ inputs.github_token }}
+
+    - name: Update version
+      if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
+      id: update_version
+      uses: infinum/android-github-actions-workflows/.github/actions/update_version@main
+      with:
+        current_version: ${{ steps.read_version.outputs.current_version }}
+        breaking_change: ${{ steps.get_pr_details.outputs.is_breaking_change }}
+        new_feature: ${{ steps.get_pr_details.outputs.is_new_feature }}
+        bugfix: ${{ steps.get_pr_details.outputs.is_bugfix }}
+
+    - name: Generate changelog
+      if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
+      id: generate_changelog
+      uses: infinum/android-github-actions-workflows/.github/actions/generate_changelog@main
+      with:
+        pr_details: ${{ steps.get_pr_details.outputs.pr_details }}
+        current_version: ${{ steps.read_version.outputs.current_version }}
+        updated_version: ${{ steps.update_version.outputs.updated_version }}
+        
+    - name: Update CHANGELOG.md
+      if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
+      uses: infinum/android-github-actions-workflows/.github/actions/update_changelog@main
+      with:
+        changelog: ${{ steps.generate_changelog.outputs.changelog }}
+        updated_version: ${{ steps.update_version.outputs.updated_version }}
+        changelog_filename: ${{ inputs.changelog_filename }}

@@ -1,0 +1,38 @@
+name: 'Commit, tag, push, release'
+description: 'Commits the changes, tags the repository, pushes the tag, and creates a GitHub release'
+
+inputs:
+  current_version:
+    description: 'The current version'
+    required: true
+  github_token:
+    description: 'The GitHub token'
+    required: true
+  updated_version:
+    description: 'The updated version'
+    required: true
+  changelog:
+    description: 'The generated changelog'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Commit and push changes
+      uses: infinum/android-github-actions-workflows/.github/actions/push_version_update@main
+      env:
+        UPDATED_VERSION: ${{ inputs.updated_version }}
+      with:
+        commit_message: "Update version to $UPDATED_VERSION"
+
+    - name: Create and push tag
+      uses: infinum/android-github-actions-workflows/.github/actions/push_version_tag@main
+      with:
+        updated_version: ${{ inputs.updated_version }}
+
+    - name: Create GitHub release
+      uses: infinum/android-github-actions-workflows/.github/actions/create_github_release@main
+      with:
+        updated_version: ${{ inputs.updated_version }}
+        changelog: ${{ inputs.changelog }}
+        github_token: ${{ inputs.github_token }}
