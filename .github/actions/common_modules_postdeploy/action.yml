@@ -19,19 +19,19 @@ runs:
   using: 'composite'
   steps:
     - name: Commit and push changes
-      uses: infinum/android-github-actions-workflows/.github/actions/push_version_update@main
+      uses: ./.github/actions/push_version_update
       env:
         UPDATED_VERSION: ${{ inputs.updated_version }}
       with:
         commit_message: "Update version to $UPDATED_VERSION"
 
     - name: Create and push tag
-      uses: infinum/android-github-actions-workflows/.github/actions/push_version_tag@main
+      uses: ./.github/actions/push_version_tag
       with:
         updated_version: ${{ inputs.updated_version }}
 
     - name: Create GitHub release
-      uses: infinum/android-github-actions-workflows/.github/actions/create_github_release@main
+      uses: ./.github/actions/create_github_release
       with:
         updated_version: ${{ inputs.updated_version }}
         changelog: ${{ inputs.changelog }}

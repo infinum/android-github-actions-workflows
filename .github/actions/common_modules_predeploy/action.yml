@@ -47,20 +47,20 @@ runs:
   steps:
     - name: Find corresponding tag
       id: find_tag
-      uses: infinum/android-github-actions-workflows/.github/actions/find_current_tag@main
+      uses: ./.github/actions/find_current_tag
       with:
         current_version: ${{ inputs.current_version }}
 
     - name: Get commits since last tag
       id: get_commits
-      uses: infinum/android-github-actions-workflows/.github/actions/commits_since_tag@main
+      uses: ./.github/actions/commits_since_tag
       with:
         tag: ${{ steps.find_tag.outputs.current_tag }}
 
     - name: Get pull requests for commits
       id: get_pull_requests
       if: steps.get_commits.outputs.commits
-      uses: infinum/android-github-actions-workflows/.github/actions/find_pull_requests@main
+      uses: ./.github/actions/find_pull_requests
       with:
         commits: ${{ steps.get_commits.outputs.commits }}
         github_token: ${{ inputs.github_token }}
@@ -68,7 +68,7 @@ runs:
     - name: Get pull request details
       id: get_pr_details
       if: steps.get_pull_requests.outputs.pr_numbers
-      uses: infinum/android-github-actions-workflows/.github/actions/get_pull_request_details@main
+      uses: ./.github/actions/get_pull_request_details
       with:
         pr_numbers: ${{ steps.get_pull_requests.outputs.pr_numbers }}
         github_token: ${{ inputs.github_token }}
@@ -76,7 +76,7 @@ runs:
     - name: Update version
       if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
       id: update_version
-      uses: infinum/android-github-actions-workflows/.github/actions/update_version@main
+      uses: ./.github/actions/update_version
       with:
         current_version: ${{ inputs.current_version }}
         breaking_change: ${{ steps.get_pr_details.outputs.is_breaking_change }}
@@ -86,7 +86,7 @@ runs:
     - name: Generate changelog
       if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
       id: generate_changelog
-      uses: infinum/android-github-actions-workflows/.github/actions/generate_changelog@main
+      uses: ./.github/actions/generate_changelog
       with:
         pr_details: ${{ steps.get_pr_details.outputs.pr_details }}
         current_version: ${{ inputs.current_version }}
@@ -94,7 +94,7 @@ runs:
         
     - name: Update CHANGELOG.md
       if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
-      uses: infinum/android-github-actions-workflows/.github/actions/update_changelog@main
+      uses: ./.github/actions/update_changelog
       with:
         changelog: ${{ steps.generate_changelog.outputs.changelog }}
         updated_version: ${{ steps.update_version.outputs.updated_version }}
