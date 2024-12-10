@@ -10,7 +10,7 @@ async function run() {
 
     const octokit = github.getOctokit(ghToken);
 
-    const releaseResponse = await octokit.repos.createRelease({
+    const releaseResponse = await octokit.rest.repos.createRelease({
       owner: context.repo.owner,
       repo: context.repo.repo,
       tag_name: `v${newVersion}`,

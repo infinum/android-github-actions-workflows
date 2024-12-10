@@ -137,7 +137,7 @@ jobs:
         if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
         uses: infinum/android-github-actions-workflows/.github/actions/push_version_tag@main
         with:
-          tag: ${{ steps.update_version.outputs.updated_version }}
+          updated_version: ${{ steps.update_version.outputs.updated_version }}
 
       - name: Create GitHub release
         if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
