@@ -49,19 +49,19 @@ runs:
   steps:
     - name: Read current version
       id: read_version
-      uses: ./.github/actions/read_current_version
+      uses: infinum/android-github-actions-workflows/.github/actions/read_current_version@main
       with:
         filename: ${{ inputs.filename }}
     - name: Run predeploy steps
       id: predeploy_steps
-      uses: ./.github/actions/common_modules_predeploy
+      uses: infinum/android-github-actions-workflows/.github/actions/common_modules_predeploy@main
       with:
         current_version: ${{ steps.read_version.outputs.current_version }}
         github_token: ${{ inputs.github_token }}
         changelog_filename: ${{ inputs.changelog_filename }}
     - name: Update version.properties
       if: steps.predeploy_steps.outputs.pr_numbers && steps.predeploy_steps.outputs.pr_details != '[]'
-      uses: ./.github/actions/write_updated_version
+      uses: infinum/android-github-actions-workflows/.github/actions/write_updated_version@main
       with:
         filename: ${{ inputs.filename }}
         updated_version: ${{ steps.update_version.outputs.updated_version }}

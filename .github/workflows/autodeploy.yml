@@ -1,0 +1,58 @@
+on:
+  workflow_call:
+    inputs:
+      deploy:
+        required: true
+        type: string
+
+
+jobs:
+  update_version_and_changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+          fetch-depth: 0
+          ssh-key: ${{ secrets.ROOT_GITHUB_ACTIONS_SSH }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle wrapper
+        id: cache_gradle_wrapper
+        uses: infinum/android-github-actions-workflows/.github/actions/cache_gradle_wrapper@main
+
+      - name: Cache Gradle dependencies
+        id: cache_gradle
+        uses: infinum/android-github-actions-workflows/.github/actions/cache_gradle@main
+
+      - name: Run predeploy steps using version.properties
+        id: predeploy_steps_properties
+        uses: infinum/android-github-actions-workflows/.github/actions/common_modules_predeploy_properties@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy
+        id: deploy
+        if: steps.predeploy_steps_properties.outputs.pr_numbers && steps.predeploy_steps_properties.outputs.pr_details != '[]'
+        run: |
+          ${{ inputs.deploy }}
+        env:
+          MAVEN_CENTRAL_USER: ${{ secrets.MAVEN_CENTRAL_USER }}
+          MAVEN_CENTRAL_PW: ${{ secrets.MAVEN_CENTRAL_PW }}
+          DEPLOY_IN_MEMORY_SIGNING_KEY: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_KEY }}
+          DEPLOY_IN_MEMORY_SIGNING_PASSWORD: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_PASSWORD }}
+
+      - name: Commit and push changes
+        if: steps.predeploy_steps_properties.outputs.pr_numbers && steps.predeploy_steps_properties.outputs.pr_details != '[]'
+        uses: infinum/android-github-actions-workflows/.github/actions/common_modules_postdeploy@main
+        with:
+          current_version: ${{ steps.predeploy_steps_properties.outputs.current_version }}
+          updated_version: ${{ steps.predeploy_steps_properties.outputs.updated_version }}
+          changelog: ${{ steps.predeploy_steps_properties.outputs.changelog }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
