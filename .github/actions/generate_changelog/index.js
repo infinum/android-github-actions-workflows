@@ -1,5 +1,6 @@
 const core = require('@actions/core');
 const fs = require('fs');
+const { context } = require('@actions/github');
 
 async function run() {
   try {
