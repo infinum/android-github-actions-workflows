@@ -47,6 +47,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - uses: actions/checkout@v4
     - name: Read current version
       id: read_version
       uses: ./.github/actions/read_current_version
