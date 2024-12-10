@@ -14,12 +14,19 @@ async function run() {
     const token = core.getInput('github_token');
     const octokit = github.getOctokit(token);
 
+    let prDetails = [];
     const commitList = commits.split(' ');
 
-    const { data: prs } = await octokit.rest.search.issuesAndPullRequests({
-      q: `${commits} repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged`,
-    });
-    let prDetails = prs.items.map(pr => ({ number: pr.number, mergedAt: pr.pull_request.merged_at }));
+    for (const commit of commitList) {
+      core.info(`Processing ${commit}...`);
+      const { data: prs } = await octokit.rest.search.issuesAndPullRequests({
+        q: `${commit} repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged`,
+      });
+
+      prs.items.forEach(pr => {
+        prDetails.push({ number: pr.number, mergedAt: pr.pull_request.merged_at });
+      });
+    }
 
     prDetails.sort((a, b) => new Date(a.mergedAt) - new Date(b.mergedAt));
     const prNumbers = prDetails.map(pr => pr.number).join(' ');
