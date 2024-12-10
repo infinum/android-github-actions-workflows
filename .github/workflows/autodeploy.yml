@@ -85,7 +85,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update version
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         id: update_version
         uses: infinum/android-github-actions-workflows/.github/actions/update_version@main
         with:
@@ -95,7 +95,7 @@ jobs:
           bugfix: ${{ steps.get_pr_details.outputs.is_bugfix }}
 
       - name: Generate changelog
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         id: generate_changelog
         uses: infinum/android-github-actions-workflows/.github/actions/generate_changelog@main
         with:
@@ -104,14 +104,14 @@ jobs:
           updated_version: ${{ steps.update_version.outputs.updated_version }}
         
       - name: Update CHANGELOG.md
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         uses: infinum/android-github-actions-workflows/.github/actions/update_changelog@main
         with:
           changelog: ${{ steps.generate_changelog.outputs.changelog }}
           updated_version: ${{ steps.update_version.outputs.updated_version }}
 
       - name: Update version.properties
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         uses: infinum/android-github-actions-workflows/.github/actions/write_updated_version@main
         with:
           updated_version: ${{ steps.update_version.outputs.updated_version }}
@@ -119,7 +119,7 @@ jobs:
 
       - name: Deploy
         id: deploy
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         run: |
           ${{ inputs.deploy }}
         env:
@@ -129,19 +129,19 @@ jobs:
           DEPLOY_IN_MEMORY_SIGNING_PASSWORD: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_PASSWORD }}
 
       - name: Commit and push changes
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         uses: infinum/android-github-actions-workflows/.github/actions/push_version_update@main
         with:
           commit_message: "Update version to ${{ steps.update_version.outputs.updated_version }}"
 
       - name: Create and push tag
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         uses: infinum/android-github-actions-workflows/.github/actions/push_version_tag@main
         with:
           updated_version: ${{ steps.update_version.outputs.updated_version }}
 
       - name: Create GitHub release
-        if: steps.get_pull_requests.outputs.pr_numbers && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
         uses: infinum/android-github-actions-workflows/.github/actions/create_github_release@main
         with:
           updated_version: ${{ steps.update_version.outputs.updated_version }}
