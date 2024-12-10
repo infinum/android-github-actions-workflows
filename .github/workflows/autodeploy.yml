@@ -47,11 +47,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-caches-
 
-      - name: Validate
-        id: validation
-        run: |
-          ${{ inputs.validation }}
-
       - name: Read current version
         id: read_version
         uses: infinum/android-github-actions-workflows/.github/actions/read_current_version@main
