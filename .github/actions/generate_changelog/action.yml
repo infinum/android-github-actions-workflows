@@ -1,0 +1,25 @@
+name: 'Generate changelog'
+description: 'Generates the changelog based on the pull request details'
+inputs:
+  pr_details:
+    description: 'The pull request details'
+    required: true
+  current_version:
+    description: 'The current version'
+    required: true
+  updated_version:
+    description: 'The updated version'
+    required: true
+  changelog_filename:
+    description: 'The name of the file to write the changelog to'
+    required: true
+    default: 'changelog_temp.md'
+outputs:
+  changelog_filename:
+    description: 'The name of the file to write the changelog to'
+  changelog:
+    description: 'The generated changelog'
+
+runs:
+  using: 'node20'
+  main: 'index.js'

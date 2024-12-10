@@ -1,0 +1,27 @@
+name: 'Write updated version'
+description: 'Writes the updated version to the version.properties file'
+
+inputs:
+  filename:
+    description: 'The name of the file to read the version from'
+    required: true
+    default: 'version.properties'
+  updated_version:
+    description: 'The updated version to write to the file'
+    required: true
+  current_version:
+    description: 'The current version'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Update version
+      id: update_version
+      shell: bash
+      env:
+        CURRENT_VERSION_FILENAME: ${{ inputs.filename }}
+        UPDATED_VERSION: ${{ inputs.updated_version }}
+        CURRENT_VERSION: ${{ inputs.current_version }}
+      run: |
+        sed -i "s/version=$CURRENT_VERSION/version=$UPDATED_VERSION/" $CURRENT_VERSION_FILENAME

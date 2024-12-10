@@ -85,77 +85,36 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update version
-        if: env.pr_numbers != '' && env.pr_details != '[]'
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
         id: update_version
-        run: |
-          IFS='.' read -r -a version_parts <<< "${{ env.current_version }}"
-          major=${version_parts[0]}
-          minor=${version_parts[1]}
-          patch=${version_parts[2]}
-          if ${{ env.breaking_change }} && [ "$major" -ne 0 ]; then
-            major=$((major + 1))
-            minor=0
-            patch=0
-          elif ${{ env.new_feature }}; then
-            minor=$((minor + 1))
-            patch=0
-          elif ${{ env.bugfix }}; then
-            patch=$((patch + 1))
-          else
-            minor=$((minor + 1))
-            patch=0
-          fi
-          new_version="$major.$minor.$patch"
-          echo "new_version=$new_version" >> $GITHUB_ENV
-          echo "new_version=$new_version"
+        uses: infinum/android-github-actions-workflows/.github/actions/update_version@main
+        with:
+          current_version: ${{ steps.read_version.outputs.current_version }}
+          breaking_change: ${{ steps.get_pr_details.outputs.is_breaking_change }}
+          new_feature: ${{ steps.get_pr_details.outputs.is_new_feature }}
+          bugfix: ${{ steps.get_pr_details.outputs.is_bugfix }}
 
       - name: Generate changelog
-        if: env.pr_numbers != '' && env.pr_details != '[]'
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
         id: generate_changelog
-        run: |
-          pr_details=$(echo '${{ env.pr_details }}' | jq -c '.')
-          breaking_changes=$(echo "$pr_details" | jq -r 'map(select(.labels | index("breaking-change"))) | .[] | "- \(.title) by @\(.author) in #\(.number)"')
-          new_features=$(echo "$pr_details" | jq -r 'map(select(.labels | index("new-feature"))) | .[] | "- \(.title) by @\(.author) in #\(.number)"')
-          bugfixes=$(echo "$pr_details" | jq -r 'map(select(.labels | index("bugfix"))) | .[] | "- \(.title) by @\(.author) in #\(.number)"')
-
-          if [ -n "$breaking_changes" ]; then
-            changelog+="### Breaking Changes\n"
-            while IFS= read -r line; do
-              changelog+="$line\n"
-            done <<< "$breaking_changes"
-            changelog+="\n"
-          fi
-
-          if [ -n "$new_features" ]; then
-            changelog+="### New Features\n"
-            while IFS= read -r line; do
-              changelog+="$line\n"
-            done <<< "$new_features"
-            changelog+="\n"
-          fi
-
-          if [ -n "$bugfixes" ]; then
-            changelog+="### Bug Fixes\n"
-            while IFS= read -r line; do
-              changelog+="$line\n"
-            done <<< "$bugfixes"
-            changelog+="\n"
-          fi
-
-          changelog+="\n\n**Full Changelog**: [v${{ env.current_version }}...v${{ env.new_version }}](https://github.com/${{ github.repository }}/compare/v${{ env.current_version }}...v${{ env.new_version }})\n"
-
-          echo "$changelog"
-          echo -e "$changelog" > changelog_temp.md
-
+        uses: infinum/android-github-actions-workflows/.github/actions/generate_changelog@main
+        with:
+          pr_details: ${{ steps.get_pr_details.outputs.pr_details }}
+          current_version: ${{ steps.read_version.outputs.current_version }}
+          updated_version: ${{ steps.update_version.outputs.updated_version }}
+        
       - name: Update CHANGELOG.md
-        if: env.pr_numbers != '' && env.pr_details != '[]'
-        run: |
-          echo -e "## v${{ env.new_version }}\n\n$(cat changelog_temp.md)\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        uses: infinum/android-github-actions-workflows/.github/actions/update_changelog@main
+        with:
+          changelog: ${{ steps.generate_changelog.outputs.changelog }}
 
       - name: Update version.properties
-        if: env.pr_numbers != ''&& env.pr_details != '[]'
-        run: |
-          sed -i "s/version=${{ env.current_version }}/version=${{ env.new_version }}/" version.properties
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        uses: infinum/android-github-actions-workflows/.github/actions/write_updated_version@main
+        with:
+          updated_version: ${{ steps.update_version.outputs.updated_version }}
+          current_version: ${{ steps.read_version.outputs.current_version }}
 
       - name: Deploy
         id: deploy

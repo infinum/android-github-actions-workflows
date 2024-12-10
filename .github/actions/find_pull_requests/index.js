@@ -29,8 +29,8 @@ async function run() {
     }
 
     prDetails.sort((a, b) => new Date(a.mergedAt) - new Date(b.mergedAt));
-    const prNumbers = prDetails.map(pr => pr.number).join(' ');
-
+    const prNumbers = [...new Set(prDetails.map(pr => pr.number))].join(' ');
+    
     if (!prNumbers) {
       core.info(`Pull requests with commits ${commits} not found! Skipping the release.`);
       core.exportVariable('pr_numbers', '');

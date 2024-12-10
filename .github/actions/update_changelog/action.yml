@@ -1,0 +1,14 @@
+name: 'Generate changelog'
+description: 'Generates the changelog based on the pull request details'
+inputs:
+  changelog:
+    description: 'Changelog to append to the existing changelog'
+    required: true
+  changelog_filename:
+    description: 'The name of the file to write the changelog to'
+    required: true
+    default: 'CHANGELOG.md'
+
+runs:
+  using: 'node20'
+  main: 'index.js'

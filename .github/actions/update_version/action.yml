@@ -1,0 +1,55 @@
+name: 'Update current version'
+description: 'Updates the current version based on the pull request details'
+
+inputs:
+  current_version:
+    description: 'The current version'
+    required: true
+  breaking_change:
+    description: 'Whether the pull request contains a breaking change'
+    required: true
+  new_feature:
+    description: 'Whether the pull request contains a new feature'
+    required: true
+  bugfix:
+    description: 'Whether the pull request contains a bugfix'
+    required: true
+
+outputs:
+  updated_version:
+    description: 'The updated version'
+    value: ${{ steps.read_version.outputs.current_version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Update version
+      id: update_version
+      shell: bash
+      env:
+        CURRENT_VERSION_VALUE: ${{ inputs.current_version }}
+        BREAKING_CHANGE: ${{ inputs.breaking_change }}
+        NEW_FEATURE: ${{ inputs.new_feature }}
+        BUGFIX: ${{ inputs.bugfix }}
+      run: |
+        IFS='.' read -r -a version_parts <<< "$CURRENT_VERSION_VALUE"
+        major=${version_parts[0]}
+        minor=${version_parts[1]}
+        patch=${version_parts[2]}
+        if "$BREAKING_CHANGE" && [ "$major" -ne 0 ]; then
+          major=$((major + 1))
+          minor=0
+          patch=0
+        elif "$NEW_FEATURE"; then
+          minor=$((minor + 1))
+          patch=0
+        elif "$BUGFIX"; then
+          patch=$((patch + 1))
+        else
+          minor=$((minor + 1))
+          patch=0
+        fi
+        new_version="$major.$minor.$patch"
+        echo "new_version=$new_version" >> $GITHUB_ENV
+        echo "updated_version=$new_version" >> $GITHUB_OUTPUT
+        echo "new_version=$new_version"
