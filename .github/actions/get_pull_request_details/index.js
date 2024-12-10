@@ -11,7 +11,7 @@ async function run() {
     }
 
     const token = core.getInput('github_token');
-    const octokit = github.getOcktokit(token);
+    const octokit = github.getOctokit(token);
 
     let prDetails = [];
     let breakingChange = false;
