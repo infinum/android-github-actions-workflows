@@ -108,6 +108,7 @@ jobs:
         uses: infinum/android-github-actions-workflows/.github/actions/update_changelog@main
         with:
           changelog: ${{ steps.generate_changelog.outputs.changelog }}
+          updated_version: ${{ steps.update_version.outputs.updated_version }}
 
       - name: Update version.properties
         if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
