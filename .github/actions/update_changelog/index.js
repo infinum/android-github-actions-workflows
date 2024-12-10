@@ -11,7 +11,7 @@ async function run() {
     const updatedChangelog = `## v${newVersion}\n\n${changelog}\n\n${currentChangelog}`;
     fs.writeFileSync(changelogFilename, updatedChangelog);
 
-    core.info("$changelogFilename updated successfully.");
+    core.info(`${changelogFilename} updated successfully.`);
   } catch (error) {
     core.setFailed(error.message);
   }
