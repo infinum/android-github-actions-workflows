@@ -19,7 +19,7 @@ async function run() {
 
     for (const commit of commitList) {
       core.info(`Processing ${commit}...`);
-      const { data: prs } = await octokit.search.issuesAndPullRequests({
+      const { data: prs } = await octokit.rest.search.issuesAndPullRequests({
         q: `${commit} repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged`,
       });
 
