@@ -49,7 +49,7 @@ runs:
       id: find_tag
       uses: infinum/android-github-actions-workflows/.github/actions/find_current_tag@main
       with:
-        current_version: ${{ steps.read_version.outputs.current_version }}
+        current_version: ${{ inputs.current_version }}
 
     - name: Get commits since last tag
       id: get_commits
@@ -78,7 +78,7 @@ runs:
       id: update_version
       uses: infinum/android-github-actions-workflows/.github/actions/update_version@main
       with:
-        current_version: ${{ steps.read_version.outputs.current_version }}
+        current_version: ${{ inputs.current_version }}
         breaking_change: ${{ steps.get_pr_details.outputs.is_breaking_change }}
         new_feature: ${{ steps.get_pr_details.outputs.is_new_feature }}
         bugfix: ${{ steps.get_pr_details.outputs.is_bugfix }}
@@ -89,7 +89,7 @@ runs:
       uses: infinum/android-github-actions-workflows/.github/actions/generate_changelog@main
       with:
         pr_details: ${{ steps.get_pr_details.outputs.pr_details }}
-        current_version: ${{ steps.read_version.outputs.current_version }}
+        current_version: ${{ inputs.current_version }}
         updated_version: ${{ steps.update_version.outputs.updated_version }}
         
     - name: Update CHANGELOG.md
