@@ -118,9 +118,8 @@ jobs:
 
       - name: Deploy
         id: deploy
-        #if: env.pr_numbers != '' && env.pr_details != '[]'
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
         run: |
-          exit 1
           ${{ inputs.deploy }}
         env:
           MAVEN_CENTRAL_USER: ${{ secrets.MAVEN_CENTRAL_USER }}
@@ -129,23 +128,21 @@ jobs:
           DEPLOY_IN_MEMORY_SIGNING_PASSWORD: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_PASSWORD }}
 
       - name: Commit and push changes
-        if: env.pr_numbers != '' && env.pr_details != '[]'
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md version.properties
-          git commit -m "Update version to ${{ env.new_version }} and update changelog"
-          git push
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        uses: infinum/android-github-actions-workflows/.github/actions/push_version_update@main
+        with:
+          commit_message: "Update version to ${{ steps.update_version.outputs.updated_version }}"
 
       - name: Create and push tag
-        if: env.pr_numbers != '' && env.pr_details != '[]'
-        run: |
-          git tag "v${{ env.new_version }}"
-          git push origin "v${{ env.new_version }}"
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        uses: infinum/android-github-actions-workflows/.github/actions/push_version_tag@main
+        with:
+          tag: ${{ steps.update_version.outputs.updated_version }}
 
       - name: Create GitHub release
-        if: env.pr_numbers != '' && env.pr_details != '[]'
-        run: |
-          gh release create "v${{ env.new_version }}" --title "v${{ env.new_version }}" --notes-file changelog_temp.md --verify-tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != '' && ${{ steps.get_pr_details.outputs.pr_details }} != '[]'
+        uses: infinum/android-github-actions-workflows/.github/actions/create_github_release@main
+        with:
+          updated_version: ${{ steps.update_version.outputs.updated_version }}
+          changelog: ${{ steps.generate_changelog.outputs.changelog }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

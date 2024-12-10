@@ -1,0 +1,19 @@
+name: 'Push version tag'
+description: 'Pushes the updated version tag to the repository'
+
+inputs:
+  updated_version:
+    description: 'The updated version'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Push version tag
+      id: push_version_tag
+      shell: bash
+      env:
+        UPDATED_VERSION: ${{ inputs.updated_version }}
+      run: |
+        git tag "v$UPDATED_VERSION"
+        git push origin "v$UPDATED_VERSION"

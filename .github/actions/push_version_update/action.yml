@@ -1,0 +1,37 @@
+name: 'Push version update'
+description: 'Commits the changes and pushes the updated version to the repository'
+
+inputs:
+  files:
+    description: 'The files to commit'
+    required: true
+    default: 'version.properties CHANGELOG.md'
+  commit_message:
+    description: 'The commit message'
+    required: true
+  committer_username:
+    description: 'The username of the committer'
+    required: true
+    default: 'github-actions[bot]'
+  committer_email:
+    description: 'The email of the committer'
+    required: true
+    default: 'github-actions[bot]@users.noreply.github.com'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Push version update
+      id: push_version_update
+      shell: bash
+      env:
+        FILES: ${{ inputs.files }}
+        COMMIT_MESSAGE: ${{ inputs.commit_message }}
+        COMMITTER_USERNAME: ${{ inputs.committer_username }}
+        COMMITTER_EMAIL: ${{ inputs.committer_email }}
+      run: |
+        git config --global user.name "$COMMITTER_USERNAME"
+        git config --global user.email "$COMMITTER_EMAIL"
+        git add $FILES
+        git commit -m "$COMMIT_MESSAGE"
+        git push

@@ -1,0 +1,16 @@
+name: 'Create GitHub release'
+description: 'Creates a GitHub release based on the pull request details'
+inputs:
+  updated_version:
+    description: 'The updated version'
+    required: true
+  changelog:
+    description: 'The changelog to include in the release'
+    required: true
+  github_token:
+    description: 'The GitHub token'
+    required: true
+
+runs:
+  using: 'node20'
+  main: 'index.js'
