@@ -1,0 +1,21 @@
+name: 'Get pull request details'
+description: 'Gets the details for the pull requests'
+inputs:
+  pr_numbers:
+    description: 'The pull request numbers to get the details for'
+    required: true
+  github_token:
+    description: 'The GitHub token'
+    required: true
+outputs:
+  pr_details:
+    description: 'The pull request details'
+  is_breaking_change:
+    description: 'Whether the pull request contains a breaking change'
+  is_new_feature:
+    description: 'Whether the pull request contains a new feature'
+  is_bugfix:
+    description: 'Whether the pull request contains a bugfix'
+runs:
+  using: 'node20'
+  main: 'index.js'

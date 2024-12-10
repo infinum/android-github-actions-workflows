@@ -78,54 +78,11 @@ jobs:
 
       - name: Get pull request details
         id: get_pr_details
-        if: env.pr_numbers != ''
-        run: |
-          pr_details="[]"
-          breaking_change=false
-          new_feature=false
-          bugfix=false
-
-          # Get the most recent PR
-          most_recent_pr=$(echo "${{ env.pr_numbers }}" | awk '{print $NF}')
-          most_recent_pr_detail=$(gh pr view $most_recent_pr --json title,body,labels,author --jq '{title: .title, body: .body, labels: [.labels[].name], number: .number, author: .author.login}')
-          echo "$most_recent_pr_detail"
-          most_recent_labels=$(echo "$most_recent_pr_detail" | jq -r '.labels[]')
-
-          # Check if the most recent PR has the skip_release label
-          for label in $most_recent_labels; do
-            if [[ "$label" == "skip-release" ]]; then
-              echo "Most recent PR has skip-release label. Skipping the release."
-              pr_details="[]"
-              echo "pr_details=$pr_details" >> $GITHUB_ENV
-              exit 0
-            fi
-          done
-
-          # Process all PRs
-          for pr in ${{ env.pr_numbers }}; do
-            pr_detail=$(gh pr view $pr --json title,body,labels,number,author --jq '{title: .title, body: .body, labels: [.labels[].name], number: .number, author: .author.login}')
-            echo "$pr_detail"
-            pr_details=$(echo "$pr_details" | jq --argjson pr_detail "$pr_detail" '. + [$pr_detail]')
-            labels=$(echo "$pr_detail" | jq -r '.labels[]')
-            if [[ "$labels" == *"breaking-change"* ]]; then
-              breaking_change=true
-            elif [[ "$labels" == *"new-feature"* ]]; then
-              new_feature=true
-            elif [[ "$labels" == *"bugfix"* ]]; then
-              bugfix=true
-            fi
-          done
-          echo "pr_details=$(echo "$pr_details" | jq -c '.')" >> $GITHUB_ENV
-          echo "breaking_change=$breaking_change" >> $GITHUB_ENV
-          echo "new_feature=$new_feature" >> $GITHUB_ENV
-          echo "bugfix=$bugfix" >> $GITHUB_ENV
-
-          echo "pr_details=$pr_details"
-          echo "breaking_change=$breaking_change"
-          echo "new_feature=$new_feature"
-          echo "bugfix=$bugfix"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ steps.get_pull_requests.outputs.pr_numbers }} != ''
+        uses: infinum/android-github-actions-workflows/.github/actions/get_pull_request_details@main
+        with:
+          pr_numbers: ${{ steps.get_pull_requests.outputs.pr_numbers }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update version
         if: env.pr_numbers != '' && env.pr_details != '[]'
