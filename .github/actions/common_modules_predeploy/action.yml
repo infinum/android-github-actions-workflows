@@ -63,6 +63,29 @@ runs:
       with:
         tag: ${{ steps.find_tag.outputs.current_tag }}
 
+    - name: Get pull requests for commits v2
+      id: get_pull_requests_v2
+      if: env.commits != ''
+      run: |
+          pr_numbers=""
+          pr_details=""
+          for commit in ${{ env.commits }}; do
+            echo "Processing $commit..."
+            prs=$(gh pr list --search "$commit" --state merged --json number,mergedAt --jq '.[] | {number: .number, mergedAt: .mergedAt}')
+            pr_details="$pr_details $prs"
+          done
+          pr_numbers=$(echo "$pr_details" | jq -s 'sort_by(.mergedAt) | .[].number' | tr '\n' ' ' | xargs)
+          if [ -z "$pr_numbers" ]; then
+            echo "Pull requests with commits ${{ env.commits }} not found! Skipping the release."
+            pr_details="[]"
+            exit 0
+          else
+          fi
+          echo "pr_numbers=$pr_numbers"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
     - name: Get pull requests for commits
       id: get_pull_requests
       if: steps.get_commits.outputs.commits
