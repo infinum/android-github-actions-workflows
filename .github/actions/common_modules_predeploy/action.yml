@@ -80,7 +80,6 @@ runs:
             echo "Pull requests with commits ${{ env.commits }} not found! Skipping the release."
             pr_details="[]"
             exit 0
-          else
           fi
           echo "pr_numbers=$pr_numbers"
       env:
