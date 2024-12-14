@@ -63,35 +63,6 @@ runs:
       with:
         tag: ${{ steps.find_tag.outputs.current_tag }}
 
-    - name: Get pull requests for commits v2
-      id: get_pull_requests_v2
-      shell: bash
-      if: env.commits != ''
-      run: |
-          pr_numbers=""
-          pr_details=""
-          for commit in ${{ env.commits }}; do
-            echo "Processing $commit..."
-            prs=$(gh pr list --search "$commit" --state merged --json number,mergedAt --jq '.[] | {number: .number, mergedAt: .mergedAt}')
-            pr_details="$pr_details $prs"
-          done
-          pr_numbers=$(echo "$pr_details" | jq -s 'sort_by(.mergedAt) | .[].number' | tr '\n' ' ' | xargs)
-          if [ -z "$pr_numbers" ]; then
-            echo "Pull requests with commits ${{ env.commits }} not found! Skipping the release."
-            pr_details="[]"
-            exit 0
-          fi
-          echo "pr_numbers=$pr_numbers"
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
-
-    - name: Print api rate limit
-      shell: pwsh
-      run: |
-        gh api rate_limit
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
-
     - name: Get pull requests for commits
       id: get_pull_requests
       if: steps.get_commits.outputs.commits
@@ -100,13 +71,6 @@ runs:
         commits: ${{ steps.get_commits.outputs.commits }}
         github_token: ${{ inputs.github_token }}
 
-    - name: Print api rate limit
-      shell: pwsh
-      run: |
-        gh api rate_limit
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
-
     - name: Get pull request details
       id: get_pr_details
       if: steps.get_pull_requests.outputs.pr_numbers
@@ -114,13 +78,6 @@ runs:
       with:
         pr_numbers: ${{ steps.get_pull_requests.outputs.pr_numbers }}
         github_token: ${{ inputs.github_token }}
-    
-    - name: Print api rate limit
-      shell: pwsh
-      run: |
-        gh api rate_limit
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
 
     - name: Update version
       if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
@@ -148,3 +105,10 @@ runs:
         changelog: ${{ steps.generate_changelog.outputs.changelog }}
         updated_version: ${{ steps.update_version.outputs.updated_version }}
         changelog_filename: ${{ inputs.changelog_filename }}
+
+    - name: Print api rate limit
+      shell: pwsh
+      run: |
+        gh api rate_limit
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
