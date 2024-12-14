@@ -85,6 +85,12 @@ runs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Print api rate limit
+      shell: pwsh
+      run: |
+        gh api rate_limit
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
 
     - name: Get pull requests for commits
       id: get_pull_requests
