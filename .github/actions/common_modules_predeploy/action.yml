@@ -45,6 +45,12 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Print api rate limit
+      shell: pwsh
+      run: |
+        gh api rate_limit
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
     - name: Find corresponding tag
       id: find_tag
       uses: infinum/android-github-actions-workflows/.github/actions/find_current_tag@main
