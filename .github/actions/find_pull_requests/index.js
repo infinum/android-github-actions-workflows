@@ -12,7 +12,14 @@ async function run() {
     }
 
     const token = core.getInput('github_token');
-    const octokit = github.getOctokit(token);
+    const octokit = github.getOctokit(token, {
+      log: {
+        debug: (message) => core.debug(message),
+        info: (message) => core.info(message),
+        warn: (message) => core.warning(message),
+        error: (message) => core.error(message),
+      },
+    });
 
     let prDetails = [];
     const commitList = commits.split(' ');
@@ -30,7 +37,7 @@ async function run() {
 
     prDetails.sort((a, b) => new Date(a.mergedAt) - new Date(b.mergedAt));
     const prNumbers = [...new Set(prDetails.map(pr => pr.number))].join(' ');
-    
+
     if (!prNumbers) {
       core.info(`Pull requests with commits ${commits} not found! Skipping the release.`);
       core.exportVariable('pr_numbers', '');
