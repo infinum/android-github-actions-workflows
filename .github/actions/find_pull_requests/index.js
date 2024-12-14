@@ -3,6 +3,21 @@ const github = require('@actions/github');
 const exec = require('@actions/exec');
 const { context } = require('@actions/github');
 
+const query = `
+query ($query: String!) {
+  search(query: $query, type: ISSUE, first: 100) {
+    edges {
+      node {
+        ... on PullRequest {
+          number
+          mergedAt
+        }
+      }
+    }
+  }
+}
+`;
+
 async function run() {
   try {
     const commits = core.getInput('commits');
@@ -21,25 +36,9 @@ async function run() {
 
     for (const commit of commitList) {
       core.info(`Processing ${commit}...`);
-      const query = `
-        query ($commit: String!, $owner: String!, $repo: String!) {
-          search(query: $commit + " repo:" + $owner + "/" + $repo + " is:pr is:merged", type: ISSUE, first: 100) {
-            edges {
-              node {
-                ... on PullRequest {
-                  number
-                  mergedAt
-                }
-              }
-            }
-          }
-        }
-      `;
 
       const variables = {
-        commit,
-        owner: context.repo.owner,
-        repo: context.repo.repo
+        query: `${commit} repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged`
       };
 
       const response = await octokit.graphql(query, variables);
