@@ -71,6 +71,13 @@ runs:
         commits: ${{ steps.get_commits.outputs.commits }}
         github_token: ${{ inputs.github_token }}
 
+    - name: Print api rate limit
+      shell: pwsh
+      run: |
+        gh api rate_limit
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+
     - name: Get pull request details
       id: get_pr_details
       if: steps.get_pull_requests.outputs.pr_numbers
@@ -78,6 +85,13 @@ runs:
       with:
         pr_numbers: ${{ steps.get_pull_requests.outputs.pr_numbers }}
         github_token: ${{ inputs.github_token }}
+    
+    - name: Print api rate limit
+      shell: pwsh
+      run: |
+        gh api rate_limit
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
 
     - name: Update version
       if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'

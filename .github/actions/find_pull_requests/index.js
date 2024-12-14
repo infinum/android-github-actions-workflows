@@ -19,6 +19,9 @@ async function run() {
     let prDetails = [];
     const commitList = commits.split(' ');
 
+    const { data: rateLimit } = await octokit.rest.rateLimit.get();
+    core.info(`Rate limit remaining: ${rateLimit}`);
+
     for (const commit of commitList) {
       core.info(`Processing ${commit}...`);
       const { data: prs } = await octokit.rest.search.issuesAndPullRequests({
