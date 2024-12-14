@@ -19,23 +19,40 @@ async function run() {
     let prDetails = [];
     const commitList = commits.split(' ');
 
-    const { data: rateLimit } = await octokit.rest.rateLimit.get();
-    core.info(`Rate limit remaining: ${rateLimit}`);
-
     for (const commit of commitList) {
       core.info(`Processing ${commit}...`);
-      const { data: prs } = await octokit.rest.search.issuesAndPullRequests({
-        q: `${commit} repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged`,
-      });
+      const query = `
+        query ($commit: String!, $owner: String!, $repo: String!) {
+          search(query: $commit + " repo:" + $owner + "/" + $repo + " is:pr is:merged", type: ISSUE, first: 100) {
+            edges {
+              node {
+                ... on PullRequest {
+                  number
+                  mergedAt
+                }
+              }
+            }
+          }
+        }
+      `;
 
-      prs.items.forEach(pr => {
-        prDetails.push({ number: pr.number, mergedAt: pr.pull_request.merged_at });
+      const variables = {
+        commit,
+        owner: context.repo.owner,
+        repo: context.repo.repo
+      };
+
+      const response = await octokit.graphql(query, variables);
+      const prs = response.search.edges.map(edge => edge.node);
+
+      prs.forEach(pr => {
+        prDetails.push({ number: pr.number, mergedAt: pr.mergedAt });
       });
     }
 
     prDetails.sort((a, b) => new Date(a.mergedAt) - new Date(b.mergedAt));
     const prNumbers = [...new Set(prDetails.map(pr => pr.number))].join(' ');
-    
+
     if (!prNumbers) {
       core.info(`Pull requests with commits ${commits} not found! Skipping the release.`);
       core.exportVariable('pr_numbers', '');
