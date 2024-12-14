@@ -4,8 +4,8 @@ const exec = require('@actions/exec');
 const { context } = require('@actions/github');
 
 const query = `
-query ($query: String!) {
-  search(query: $query, type: ISSUE, first: 100) {
+query ($queryString: String!) {
+  search(query: $queryString, type: ISSUE, first: 100) {
     edges {
       node {
         ... on PullRequest {
@@ -38,7 +38,7 @@ async function run() {
       core.info(`Processing ${commit}...`);
 
       const variables = {
-        query: `${commit} repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged`
+        queryString: `${commit} repo:${context.repo.owner}/${context.repo.repo} is:pr is:merged`
       };
 
       const response = await octokit.graphql(query, variables);
