@@ -65,6 +65,7 @@ runs:
 
     - name: Get pull requests for commits v2
       id: get_pull_requests_v2
+      shell: bash
       if: env.commits != ''
       run: |
           pr_numbers=""
