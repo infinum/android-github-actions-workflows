@@ -20,10 +20,8 @@ runs:
   steps:
     - name: Commit and push changes
       uses: infinum/android-github-actions-workflows/.github/actions/push_version_update@main
-      env:
-        UPDATED_VERSION: ${{ inputs.updated_version }}
       with:
-        commit_message: "Update version to $UPDATED_VERSION"
+        commit_message: "Update version to ${{ inputs.updated_version }}"
 
     - name: Create and push tag
       uses: infinum/android-github-actions-workflows/.github/actions/push_version_tag@main
