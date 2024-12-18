@@ -14,12 +14,15 @@ async function run() {
       return;
     }
 
+    // Filter out PRs with the label "skip-changelog"
+    const filteredPrDetails = prDetails.filter(pr => !pr.labels.includes('skip-changelog'));
+
     let changelog = '';
-    const breakingChanges = prDetails.filter(pr => pr.labels.includes('breaking-change'))
+    const breakingChanges = filteredPrDetails.filter(pr => pr.labels.includes('breaking-change'))
       .map(pr => `- ${pr.title} by @${pr.author} in #${pr.number}`).join('\n');
-    const newFeatures = prDetails.filter(pr => pr.labels.includes('new-feature'))
+    const newFeatures = filteredPrDetails.filter(pr => pr.labels.includes('new-feature'))
       .map(pr => `- ${pr.title} by @${pr.author} in #${pr.number}`).join('\n');
-    const bugfixes = prDetails.filter(pr => pr.labels.includes('bugfix'))
+    const bugfixes = filteredPrDetails.filter(pr => pr.labels.includes('bugfix'))
       .map(pr => `- ${pr.title} by @${pr.author} in #${pr.number}`).join('\n');
 
     if (breakingChanges) {
