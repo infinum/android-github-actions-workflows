@@ -33,7 +33,7 @@ async function run() {
     // Check if the most recent PR has the skip_release label
     if (mostRecentLabels.includes('skip-release')) {
       core.info('Most recent PR has skip-release label. Skipping the release.');
-      core.exportVariable('pr_details', '[]');
+      core.exportVariable('pr_details', JSON.stringify(prDetails));
       return;
     }
 
