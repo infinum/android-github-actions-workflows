@@ -2,7 +2,19 @@ name: Dismiss dev-only Dependabot alerts (reusable)
 
 on:
   workflow_call:
+    secrets:
+      app-private-key:
+        required: true
+        description: |
+          PEM private key of the `infinum-dependabot-dismisser` GitHub App.
+          Used to mint an installation access token at runtime with
+          `Dependabot alerts: read/write` on the caller repo. The default
+          GITHUB_TOKEN cannot access the Dependabot Alerts REST API.
     inputs:
+      app-id:
+        type: string
+        required: true
+        description: "App ID of the `infinum-dependabot-dismisser` GitHub App."
       dry-run:
         type: boolean
         default: true
@@ -58,15 +70,22 @@ jobs:
     name: List open Dependabot alerts
     runs-on: ubuntu-latest
     permissions:
-      security-events: read
+      contents: read
     outputs:
       has-alerts: ${{ steps.fetch.outputs.has-alerts }}
       count: ${{ steps.fetch.outputs.count }}
     steps:
+      - name: Mint GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+
       - name: Fetch open Dependabot alerts
         id: fetch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -93,12 +112,18 @@ jobs:
     if: needs.list-alerts.outputs.has-alerts == 'true'
     runs-on: ubuntu-latest
     permissions:
-      security-events: write
       contents: read
     steps:
+      - name: Mint GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+
       - name: Fetch open Dependabot alerts (cached for later steps)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -107,24 +132,24 @@ jobs:
             > /tmp/dismiss-bot/alerts.json
 
       - name: Checkout caller repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ inputs.java-version }}
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Checkout tooling scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: infinum/android-github-actions-workflows
           ref: ${{ github.workflow_sha }}
@@ -206,7 +231,7 @@ jobs:
 
       - name: Categorize and dismiss alerts
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           DRY_RUN: ${{ inputs.dry-run }}
           REPO: ${{ github.repository }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
