@@ -82,15 +82,6 @@ jobs:
           app-id: ${{ inputs.app-id }}
           private-key: ${{ secrets.app-private-key }}
 
-      - name: Mint tooling repository token
-        id: tooling-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ inputs.app-id }}
-          private-key: ${{ secrets.app-private-key }}
-          owner: infinum
-          repositories: android-github-actions-workflows
-
       - name: Fetch open Dependabot alerts
         id: fetch
         env:
@@ -129,6 +120,15 @@ jobs:
         with:
           app-id: ${{ inputs.app-id }}
           private-key: ${{ secrets.app-private-key }}
+
+      - name: Mint tooling repository token
+        id: tooling-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: infinum
+          repositories: android-github-actions-workflows
 
       - name: Fetch open Dependabot alerts (cached for later steps)
         env:
