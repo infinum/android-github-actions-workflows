@@ -82,6 +82,15 @@ jobs:
           app-id: ${{ inputs.app-id }}
           private-key: ${{ secrets.app-private-key }}
 
+      - name: Mint tooling repository token
+        id: tooling-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: infinum
+          repositories: android-github-actions-workflows
+
       - name: Fetch open Dependabot alerts
         id: fetch
         env:
@@ -154,7 +163,7 @@ jobs:
           repository: infinum/android-github-actions-workflows
           ref: ${{ github.workflow_sha }}
           path: .dismiss-bot
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.tooling-token.outputs.token }}
 
       - name: Build dismissal config
         env:
