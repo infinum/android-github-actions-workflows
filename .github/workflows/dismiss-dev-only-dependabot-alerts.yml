@@ -81,6 +81,7 @@ jobs:
         with:
           app-id: ${{ inputs.app-id }}
           private-key: ${{ secrets.app-private-key }}
+          owner: ${{ github.repository_owner }}
 
       - name: Fetch open Dependabot alerts
         id: fetch
@@ -120,6 +121,7 @@ jobs:
         with:
           app-id: ${{ inputs.app-id }}
           private-key: ${{ secrets.app-private-key }}
+          owner: ${{ github.repository_owner }}
 
       - name: Mint tooling repository token
         id: tooling-token
