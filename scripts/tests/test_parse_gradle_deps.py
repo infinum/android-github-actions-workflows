@@ -36,6 +36,10 @@ testImplementation - test impl
 +--- junit:junit:4.13
      \\--- org.hamcrest:hamcrest-core:1.3
 
+_internal-unified-test-platform-android-test-plugin-host-emulator-control - A configuration to resolve the Unified Test Platform dependencies.
+\\--- io.grpc:grpc-netty:1.69.1
+     \\--- io.netty:netty-codec-http:4.1.110.Final
+
 BUILD SUCCESSFUL in 1s
 
 > Task :buildEnvironment
@@ -132,6 +136,16 @@ class TestParser(unittest.TestCase):
         deps = self._deps(":app", "testImplementation")
         self.assertEqual(deps["junit:junit:4.13"], ["junit:junit:4.13"])
         self.assertEqual(deps["org.hamcrest:hamcrest-core:1.3"], ["junit:junit:4.13"])
+
+    def test_hyphenated_configuration_names_are_captured(self):
+        deps = self._deps(
+            ":app",
+            "_internal-unified-test-platform-android-test-plugin-host-emulator-control",
+        )
+        self.assertEqual(
+            deps["io.netty:netty-codec-http:4.1.110.Final"],
+            ["io.grpc:grpc-netty:1.69.1"],
+        )
 
 
 if __name__ == "__main__":

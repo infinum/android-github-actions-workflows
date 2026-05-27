@@ -44,7 +44,9 @@ TREE_LINE = re.compile(r"^([ |+\\]+)--- (.+)$")
 #   testImplementation - Implementation only dependencies for source set 'test'. (n)
 #   classpath
 #   _agp_internal_devDebugAndroidTest_kspClasspath
-CONFIG_HEADER = re.compile(r"^([_a-zA-Z][a-zA-Z0-9_]*)(?:\s*-\s+.*)?(?:\s*\(n\))?$")
+#   _internal-unified-test-platform-android-test-plugin-host-emulator-control - ...
+# Hyphenated config names exist in AGP internals; allow '-' in the identifier.
+CONFIG_HEADER = re.compile(r"^([_a-zA-Z][a-zA-Z0-9_-]*)(?:\s*-\s+.*)?(?:\s*\(n\))?$")
 LEGEND_LINE = re.compile(r"^\([cnr*]\)\s")
 SKIP_STATUSES = {"UP-TO-DATE", "SKIPPED", "NO-SOURCE"}
 
