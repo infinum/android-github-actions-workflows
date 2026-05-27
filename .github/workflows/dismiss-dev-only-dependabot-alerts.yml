@@ -142,6 +142,8 @@ jobs:
 
       - name: Checkout caller repository
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Set up JDK
         uses: actions/setup-java@v5
