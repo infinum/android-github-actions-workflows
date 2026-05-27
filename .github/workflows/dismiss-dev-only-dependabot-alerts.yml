@@ -143,6 +143,7 @@ jobs:
       - name: Checkout caller repository
         uses: actions/checkout@v6
         with:
+          token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
 
       - name: Set up JDK
