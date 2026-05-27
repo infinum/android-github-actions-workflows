@@ -22,23 +22,31 @@ mkdir -p "$(dirname "$OUTPUT")"
 MODULES_FILE="$(dirname "$OUTPUT")/modules.txt"
 
 echo "==> Enumerating modules…"
-./gradlew -q --console=plain projects 2>/dev/null \
-    | grep -oE "Project ':[^']+'" \
+PROJECTS_LOG="$(dirname "$OUTPUT")/gradle-projects.log"
+if ! ./gradlew -q --console=plain projects > "$PROJECTS_LOG" 2>&1; then
+    echo "    failed to enumerate modules; gradle output follows:" >&2
+    cat "$PROJECTS_LOG" >&2
+    exit 1
+fi
+
+grep -oE "Project ':[^']+'" "$PROJECTS_LOG" \
     | sed -E "s/Project '(.+)'/\1/" \
-    | sort -u > "$MODULES_FILE"
+    | sort -u > "$MODULES_FILE" || true
 
 MODULE_COUNT=$(wc -l < "$MODULES_FILE" | tr -d ' ')
 echo "    found $MODULE_COUNT modules → $MODULES_FILE"
+if [ "$MODULE_COUNT" -eq 0 ]; then
+    echo "    no subprojects detected; only root buildscript dependencies will be captured"
+fi
 
 echo "==> Building task list…"
-TASKS="buildEnvironment"
+TASKS=(buildEnvironment)
 while IFS= read -r module; do
-    TASKS="$TASKS ${module}:dependencies"
+    TASKS+=("${module}:dependencies")
 done < "$MODULES_FILE"
 
 echo "==> Running gradle…"
-# shellcheck disable=SC2086
-./gradlew --console=plain $TASKS > "$OUTPUT" 2>&1 || {
+./gradlew --console=plain "${TASKS[@]}" > "$OUTPUT" 2>&1 || {
     echo "    gradle exited non-zero; output preserved at $OUTPUT" >&2
     exit 1
 }
