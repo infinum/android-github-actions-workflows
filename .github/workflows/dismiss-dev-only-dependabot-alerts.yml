@@ -161,7 +161,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: infinum/android-github-actions-workflows
-          ref: ${{ github.workflow_sha }}
+          ref: feature/dismiss-dev-only-dependabot-alerts
           path: .dismiss-bot
           token: ${{ steps.tooling-token.outputs.token }}
 
