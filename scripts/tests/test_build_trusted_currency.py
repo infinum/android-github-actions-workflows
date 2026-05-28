@@ -28,9 +28,14 @@ METADATA_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def meta(group, artifact, versions):
+def meta(group, artifact, versions, release=None):
     body = "\n".join(f"      <version>{v}</version>" for v in versions)
-    return METADATA_TEMPLATE.format(group=group, artifact=artifact, versions=body)
+    xml = METADATA_TEMPLATE.format(group=group, artifact=artifact, versions=body)
+    if release is not None:
+        # Insert <release>X</release> just before <versions> so real Maven
+        # metadata layout is matched.
+        xml = xml.replace("    <versions>", f"    <release>{release}</release>\n    <versions>")
+    return xml
 
 
 class FakeResponse:
@@ -82,6 +87,26 @@ class TestLatestStableFromMetadata(unittest.TestCase):
     def test_all_prerelease_returns_none(self):
         xml = meta("g", "a", ["1.0.0-alpha01", "1.0.0-rc1"])
         self.assertIsNone(btc.latest_stable_from_metadata(xml))
+
+    def test_falls_back_to_release_when_no_stable(self):
+        # Mirrors com.google.testing.platform:core — every version is an
+        # alpha, but the publisher's `<release>` pointer names one of them
+        # as the current release.
+        xml = meta("g", "a",
+                   ["0.0.8-alpha07", "0.0.8-alpha08", "0.0.9-alpha04"],
+                   release="0.0.9-alpha04")
+        self.assertEqual(btc.latest_stable_from_metadata(xml), "0.0.9-alpha04")
+
+    def test_prefers_stable_over_release_pointing_to_alpha(self):
+        # Mirrors AGP — both stable and alpha versions exist, and `<release>`
+        # is the latest alpha (per Maven's spec it's just the latest
+        # non-SNAPSHOT). We must still return the latest STABLE, otherwise a
+        # project on a stable AGP would get marked not-current against an
+        # alpha line.
+        xml = meta("com.android.tools.build", "gradle",
+                   ["9.0.0", "9.1.0", "9.3.0-alpha08"],
+                   release="9.3.0-alpha08")
+        self.assertEqual(btc.latest_stable_from_metadata(xml), "9.1.0")
 
     def test_case_insensitive_prerelease_markers(self):
         xml = meta("g", "a", ["1.0.0-ALPHA01", "1.0.0", "1.0.0-RC.1"])

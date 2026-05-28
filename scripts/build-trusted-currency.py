@@ -42,6 +42,7 @@ MAVEN_REPOS = [
 
 PRERELEASE_MARKERS = ("-alpha", "-beta", "-rc", "-dev", "-snapshot")
 VERSION_TAG = re.compile(r"<version>([^<]+)</version>")
+RELEASE_TAG = re.compile(r"<release>([^<]+)</release>")
 
 
 def coord_of(versioned_id: str) -> str:
@@ -118,14 +119,32 @@ def fetch_metadata(coord: str) -> Optional[str]:
 
 
 def latest_stable_from_metadata(xml: str) -> Optional[str]:
+    """Pick the version to compare against. Preference order:
+
+    1. Highest stable version (no `-alpha`/`-beta`/`-rc`/`-dev`/`-snapshot`).
+       Used when the package has any stable line at all — AGP, AndroidX,
+       Kotlin, etc. all fall here.
+    2. The `<release>` element from the metadata, if the package has *no*
+       stable versions at all. Some Google libraries (notably
+       `com.google.testing.platform:*` — the Unified Test Platform) ship
+       permanently in alpha; their `<release>` pointer is what Maven
+       publishers explicitly designate as "current."
+    3. None — package has no versions and no `<release>` tag. Treat as
+       not-current.
+    """
     versions = VERSION_TAG.findall(xml)
     stable = [
         v for v in versions
         if not any(marker in v.lower() for marker in PRERELEASE_MARKERS)
     ]
-    if not stable:
-        return None
-    return sorted(stable, key=version_sort_key)[-1]
+    if stable:
+        return sorted(stable, key=version_sort_key)[-1]
+
+    rel = RELEASE_TAG.search(xml)
+    if rel:
+        return rel.group(1).strip()
+
+    return None
 
 
 def is_current(project_version: str, latest: str, threshold: str) -> bool:
