@@ -11,7 +11,7 @@ on:
           `Dependabot alerts: read/write` on the caller repo. The default
           GITHUB_TOKEN cannot access the Dependabot Alerts REST API.
     inputs:
-      app-id:
+      client-id:
         type: string
         required: true
         description: |
@@ -84,7 +84,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ inputs.app-id }}
+          client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.app-private-key }}
           owner: ${{ github.repository_owner }}
 
@@ -124,7 +124,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ inputs.app-id }}
+          client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.app-private-key }}
           owner: ${{ github.repository_owner }}
 
@@ -132,7 +132,7 @@ jobs:
         id: tooling-token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ inputs.app-id }}
+          client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.app-private-key }}
           owner: infinum
           repositories: android-github-actions-workflows
