@@ -51,7 +51,8 @@ class FakeResponse:
 @contextmanager
 def stub_urlopen(url_to_body):
     """Stub urlopen to return canned bodies for matched URL substrings; raise
-    URLError for unmatched URLs (simulating 404)."""
+    URLError for unmatched URLs (simulating 404). Also disables retry sleeps
+    so tests that exercise failure paths stay fast."""
     import urllib.error
     import urllib.request
 
@@ -64,7 +65,8 @@ def stub_urlopen(url_to_body):
                 return FakeResponse(body)
         raise urllib.error.URLError(f"stub: unmatched url {url}")
 
-    with mock.patch.object(urllib.request, "urlopen", fake_urlopen):
+    with mock.patch.object(urllib.request, "urlopen", fake_urlopen), \
+         mock.patch.object(btc.time, "sleep", lambda _: None):
         yield
 
 
@@ -117,6 +119,55 @@ class TestFetchMetadataFallback(unittest.TestCase):
     def test_all_fail_returns_none(self):
         with stub_urlopen({}):
             self.assertIsNone(btc.fetch_metadata("com.example:lib"))
+
+    def test_retries_after_transient_failure(self):
+        """First call raises URLError; second call returns 200. The retry
+        loop should recover on the second attempt instead of giving up."""
+        import urllib.request
+        xml = meta("com.example", "lib", ["1.0.0"])
+        calls = {"count": 0}
+
+        def flaky_urlopen(request, timeout=None):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                import urllib.error
+                raise urllib.error.URLError("simulated transient failure")
+            return FakeResponse(xml)
+
+        with mock.patch.object(urllib.request, "urlopen", flaky_urlopen), \
+             mock.patch.object(btc.time, "sleep", lambda _: None):
+            body = btc.fetch_metadata("com.example:lib")
+        self.assertIsNotNone(body)
+        self.assertIn("<version>1.0.0</version>", body)
+        self.assertEqual(calls["count"], 2, "should have retried once before succeeding")
+
+    def test_does_not_retry_on_404(self):
+        """A 4xx is a genuine miss; the retry loop should short-circuit and
+        move to the next repo, not waste retries on a URL that will never work."""
+        import urllib.error
+        import urllib.request
+        xml = meta("com.example", "lib", ["1.0.0"])
+        calls = {"google": 0, "plugins": 0, "central": 0}
+
+        def fake_urlopen(request, timeout=None):
+            url = request.full_url
+            if "dl.google.com" in url:
+                calls["google"] += 1
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            if "plugins.gradle.org" in url:
+                calls["plugins"] += 1
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            calls["central"] += 1
+            return FakeResponse(xml)
+
+        with mock.patch.object(urllib.request, "urlopen", fake_urlopen), \
+             mock.patch.object(btc.time, "sleep", lambda _: None):
+            body = btc.fetch_metadata("com.example:lib")
+        self.assertIsNotNone(body)
+        # Each 404 repo should be hit exactly once (no retry on 4xx).
+        self.assertEqual(calls["google"], 1)
+        self.assertEqual(calls["plugins"], 1)
+        self.assertEqual(calls["central"], 1)
 
 
 class TestCollectRelevantTopLevels(unittest.TestCase):

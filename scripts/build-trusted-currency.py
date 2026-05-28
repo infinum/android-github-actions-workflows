@@ -23,6 +23,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from typing import Optional
@@ -30,6 +31,8 @@ from typing import Optional
 
 USER_AGENT = "infinum-dependabot-dismiss/1.0"
 TIMEOUT_SECONDS = 10
+RETRY_ATTEMPTS = 3       # attempts per repo URL before giving up on that repo
+RETRY_BASE_DELAY = 0.5   # seconds; doubles each retry
 
 MAVEN_REPOS = [
     "https://dl.google.com/dl/android/maven2",
@@ -74,6 +77,33 @@ def version_sort_key(version: str) -> tuple:
     return tuple(parts)
 
 
+def _fetch_url(url: str) -> Optional[str]:
+    """Single-URL fetch with retry on transient errors. Returns the response
+    body on 200, or None if a 4xx is encountered or all attempts fail. A 4xx
+    short-circuits (genuine miss — no point retrying). 5xx and network-layer
+    errors are retried with exponential backoff."""
+    delay = RETRY_BASE_DELAY
+    for attempt in range(RETRY_ATTEMPTS):
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+                if resp.status == 200:
+                    return resp.read().decode("utf-8", errors="replace")
+                return None
+        except urllib.error.HTTPError as e:
+            if 400 <= e.code < 500:
+                # Genuine "not at this URL" — try the next repo, no retry.
+                return None
+            # 5xx: transient server error, fall through to retry.
+        except (urllib.error.URLError, TimeoutError, OSError):
+            # Network/TLS/connection issues — retry.
+            pass
+        if attempt < RETRY_ATTEMPTS - 1:
+            time.sleep(delay)
+            delay *= 2
+    return None
+
+
 def fetch_metadata(coord: str) -> Optional[str]:
     """Try each Maven repo in order; return first metadata XML body that loads.
     `coord` is `group:artifact`."""
@@ -81,13 +111,9 @@ def fetch_metadata(coord: str) -> Optional[str]:
     group_path = group.replace(".", "/")
     for base in MAVEN_REPOS:
         url = f"{base}/{group_path}/{artifact}/maven-metadata.xml"
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
-                if resp.status == 200:
-                    return resp.read().decode("utf-8", errors="replace")
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
-            continue
+        body = _fetch_url(url)
+        if body is not None:
+            return body
     return None
 
 
@@ -185,8 +211,15 @@ def main() -> None:
 
         latest = metadata_cache[ga]
         if latest is None:
+            # Demoted to ::notice:: — this is a conservative fallback rather
+            # than something the user usually needs to act on. The categorizer
+            # only consults currency when the trusted-source rule applies
+            # (production/buildscript/codegen-main scopes), so test-config and
+            # non-production occurrences are unaffected regardless.
             print(
-                f"::warning::Maven lookup failed for {ga}; treating as not current.",
+                f"::notice::Maven currency lookup unavailable for {ga}; "
+                f"treating as not current. Alerts whose dismissal would "
+                f"require this trusted source to be current will be left open.",
                 file=sys.stderr,
             )
             currency[tl] = {"current": False, "latest": "unknown"}
