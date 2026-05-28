@@ -11,10 +11,13 @@ on:
           `Dependabot alerts: read/write` on the caller repo. The default
           GITHUB_TOKEN cannot access the Dependabot Alerts REST API.
     inputs:
-      app-id:
+      client-id:
         type: string
         required: true
-        description: "App ID of the `infinum-dependabot-dismisser` GitHub App."
+        description: |
+          Client ID (or legacy numeric App ID) of the
+          `infinum-dependabot-dismisser` GitHub App. Passed verbatim to
+          `actions/create-github-app-token@v3`, which accepts either form.
       dry-run:
         type: boolean
         default: true
@@ -79,7 +82,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ inputs.app-id }}
+          client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.app-private-key }}
           owner: ${{ github.repository_owner }}
 
@@ -119,7 +122,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ inputs.app-id }}
+          client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.app-private-key }}
           owner: ${{ github.repository_owner }}
 
@@ -127,7 +130,7 @@ jobs:
         id: tooling-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ inputs.app-id }}
+          client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.app-private-key }}
           owner: infinum
           repositories: android-github-actions-workflows
