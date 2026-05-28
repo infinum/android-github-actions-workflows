@@ -261,7 +261,6 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           DRY_RUN: ${{ inputs.dry-run }}
           REPO: ${{ github.repository }}
-          WORKFLOW_REF: ${{ github.workflow_ref }}
         run: |
           set -euo pipefail
           DEP_MAP=build/dependabot-tools/dep-config-map.json
@@ -313,6 +312,10 @@ jobs:
               --config "${CONFIG}" \
               --currency-map "${CURRENCY}")
 
+            # categorize-alert.py emits plain text. The summary cell adds
+            # markdown for visual hierarchy; the dismissal comment uses the
+            # plain text verbatim (after truncation + run-URL append by the
+            # helper).
             DECISION=$(printf "%s" "${RESULT}" | cut -f1)
             REASON=$(printf "%s" "${RESULT}" | cut -f2)
             DETAIL=$(printf "%s" "${RESULT}" | cut -f3-)
@@ -325,18 +328,28 @@ jobs:
 
             ALERT_LINK="[#${NUM}](https://github.com/${REPO}/security/dependabot/${NUM})"
 
+            # Markdown-only formatting for the summary cell: bold the leading
+            # category clause (everything before the first " — "), and wrap
+            # comma-separated items in the configs detail in inline-code.
+            REASON_MD=$(printf "%s" "${REASON}" | sed -E 's/^([^—]+)( — )/**\1**\2/')
             if [ -n "${DETAIL}" ]; then
-              REASON_CELL="${REASON}<br><sub><em>${DETAIL}</em></sub>"
+              # Wrap each item after "Configs: " in backticks.
+              DETAIL_MD=$(printf "%s" "${DETAIL}" | sed -E 's/Configs: /Configs: `/; s/, \+/`, +/; s/, ([^,+]+)/`, `\1/g; s/([^`])$/\1`/')
+              REASON_CELL="${REASON_MD}<br><sub><em>${DETAIL_MD}</em></sub>"
             else
-              REASON_CELL="${REASON}"
+              REASON_CELL="${REASON_MD}"
             fi
 
             printf "| %s | %s | %s | %s | %s |\n" \
               "${ALERT_LINK}" "${PKG}" "${SEV}" "${MARKER}" "${REASON_CELL}" >> "$GITHUB_STEP_SUMMARY"
 
             if [ "${DECISION}" = "dismiss" ] && [ "${DRY_RUN}" != "true" ]; then
-              # Keep the dismissal API comment plain text (no markdown).
-              DISMISS_COMMENT="Auto-dismissed by ${WORKFLOW_REF}. ${REASON} ${DETAIL}"
+              # The Dependabot Alerts API caps `dismissed_comment` at 280
+              # unicode characters. The helper truncates the body if needed
+              # and appends a link to this run for the audit trail.
+              RUN_URL="https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID}"
+              DISMISS_COMMENT=$(python3 .dismiss-bot/scripts/format-dismissal-comment.py \
+                "${REASON}" "${DETAIL}" "${RUN_URL}")
               gh api -X PATCH "repos/${REPO}/dependabot/alerts/${NUM}" \
                 -f state=dismissed \
                 -f dismissed_reason=not_used \

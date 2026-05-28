@@ -233,10 +233,11 @@ def safe_category(reason: str) -> str:
 
 
 def location_label(occ: dict) -> str:
-    """Human-friendly label for the (project, config, via) of an occurrence."""
+    """Human-friendly label for the (project, config, via) of an occurrence.
+    Output is plain text — the YAML adds markdown for the summary."""
     if occ.get("via") == "buildscript":
         return "buildscript classpath"
-    return f"`{occ['project']}` (`{occ['config']}`)"
+    return f"{occ['project']} ({occ['config']})"
 
 
 def format_unsafe_reason(occ: dict, reason: str) -> str:
@@ -259,7 +260,7 @@ def format_unsafe_reason(occ: dict, reason: str) -> str:
         return f"Used as production codegen at {loc}."
     if reason.startswith("buildscript classpath") and "disabled" in reason:
         return ("Buildscript-classpath dismissal is disabled. Add "
-                "`buildscript` to `trusted-source-scopes` to enable it.")
+                "'buildscript' to 'trusted-source-scopes' to enable it.")
     if reason.startswith("no top-level"):
         return (f"Pulled in via a project chain at {loc} — top-level can't be "
                 "attributed, so the trusted-source rule cannot apply.")
@@ -280,13 +281,13 @@ def format_safe_summary(reachable_occs: list, verdicts: list,
     n = len(reachable_occs)
     if len(categories) == 1:
         cat_name = next(iter(categories))
-        primary = (f"**Safe everywhere reachable** — {n} occurrence(s), "
+        primary = (f"Safe everywhere reachable — {n} occurrence(s), "
                    f"all in {cat_name}.")
     else:
         breakdown = ", ".join(
             f"{cat} ({count})" for cat, count in categories.most_common()
         )
-        primary = (f"**Safe everywhere reachable** — {n} occurrence(s): "
+        primary = (f"Safe everywhere reachable — {n} occurrence(s): "
                    f"{breakdown}.")
 
     if unreachable_count:
@@ -295,11 +296,11 @@ def format_safe_summary(reachable_occs: list, verdicts: list,
 
     configs = sorted({o["config"] for o in reachable_occs})
     if len(configs) <= 3:
-        detail = "Configs: " + ", ".join(f"`{c}`" for c in configs)
+        detail = "Configs: " + ", ".join(configs)
     else:
         detail = (
             "Configs: "
-            + ", ".join(f"`{c}`" for c in configs[:3])
+            + ", ".join(configs[:3])
             + f", +{len(configs) - 3} more"
         )
     return primary, detail
@@ -355,10 +356,10 @@ def main() -> None:
         # `unreachable_occs` enumerates only the modules where THIS package
         # was found — not every unreachable module in the composite.
         modules = sorted({o["project"] for o in unreachable_occs})
-        shown = ", ".join(f"`{m}`" for m in modules[:6])
+        shown = ", ".join(modules[:6])
         more = "" if len(modules) <= 6 else f" (+{len(modules) - 6} more)"
         primary = (
-            "**Only used by unreachable included-build module(s):** "
+            "Only used by unreachable included-build module(s): "
             f"{shown}{more}. No root module consumes them, so the vulnerable "
             "code cannot reach the shipped APK."
         )
