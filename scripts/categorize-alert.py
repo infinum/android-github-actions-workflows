@@ -204,6 +204,115 @@ def find_occurrences(pkg_name: str, dep_map: dict) -> list:
     return occurrences
 
 
+# --- Output formatting ----------------------------------------------------
+#
+# The categorizer writes a single tab-separated line:
+#   <verdict>\t<primary_reason>\t<detail>
+#
+# `primary_reason` is plain English meant to fit a markdown table cell.
+# `detail` (optional, may be empty) is a secondary line — typically a list of
+# representative config names — that the workflow renders in a smaller font
+# under the primary text. Neither field contains tabs or newlines.
+
+SAFE_CATEGORY_LABELS = [
+    # Ordered: probe most specific reason prefixes first.
+    ("test source set", "test source sets"),
+    ("codegen for non-production", "non-production codegen"),
+    ("non-production variant", "non-production variants"),
+    ("all top-levels trusted+current", "trusted+current transitives"),
+    ("build-tooling configuration", "build tooling"),
+]
+
+
+def safe_category(reason: str) -> str:
+    """Map a categorize_occurrence SAFE reason string to a human label."""
+    for prefix, label in SAFE_CATEGORY_LABELS:
+        if reason.startswith(prefix):
+            return label
+    return "other safe configurations"
+
+
+def location_label(occ: dict) -> str:
+    """Human-friendly label for the (project, config, via) of an occurrence."""
+    if occ.get("via") == "buildscript":
+        return "buildscript classpath"
+    return f"`{occ['project']}` (`{occ['config']}`)"
+
+
+def format_unsafe_reason(occ: dict, reason: str) -> str:
+    """Convert a per-occurrence UNSAFE `reason` into a sentence with context."""
+    loc = location_label(occ)
+    if reason.startswith("directly declared"):
+        return (f"Directly declared at {loc}. Bump the version manually to "
+                "address the alert.")
+    if reason.startswith("brought in by non-trusted"):
+        # reason format: "brought in by non-trusted source(s): a, b"
+        sources = reason.split(":", 1)[1].strip()
+        return f"Pulled into {loc} by non-trusted source(s): {sources}."
+    if reason.startswith("trusted source(s) not current"):
+        details = reason.split(":", 1)[1].strip()
+        return (f"Pulled into {loc} by trusted source(s) that are behind "
+                f"latest: {details}. Bump them to make this dismissable.")
+    if reason.startswith("production classpath"):
+        return f"Used in a production classpath at {loc}."
+    if reason.startswith("production codegen"):
+        return f"Used as production codegen at {loc}."
+    if reason.startswith("buildscript classpath") and "disabled" in reason:
+        return ("Buildscript-classpath dismissal is disabled. Add "
+                "`buildscript` to `trusted-source-scopes` to enable it.")
+    if reason.startswith("no top-level"):
+        return (f"Pulled in via a project chain at {loc} — top-level can't be "
+                "attributed, so the trusted-source rule cannot apply.")
+    # Fallback: surface the raw categorizer reason with location.
+    return f"{loc}: {reason}"
+
+
+def format_safe_summary(reachable_occs: list, verdicts: list,
+                        unreachable_count: int) -> tuple:
+    """Returns (primary, detail) for a dismiss where every reachable
+    occurrence was safe."""
+    from collections import Counter
+
+    categories: Counter = Counter()
+    for (_, reason) in verdicts:
+        categories[safe_category(reason)] += 1
+
+    n = len(reachable_occs)
+    if len(categories) == 1:
+        cat_name = next(iter(categories))
+        primary = (f"**Safe everywhere reachable** — {n} occurrence(s), "
+                   f"all in {cat_name}.")
+    else:
+        breakdown = ", ".join(
+            f"{cat} ({count})" for cat, count in categories.most_common()
+        )
+        primary = (f"**Safe everywhere reachable** — {n} occurrence(s): "
+                   f"{breakdown}.")
+
+    if unreachable_count:
+        primary += (f" {unreachable_count} more occurrence(s) in unreachable "
+                    "included-build modules were ignored.")
+
+    configs = sorted({o["config"] for o in reachable_occs})
+    if len(configs) <= 3:
+        detail = "Configs: " + ", ".join(f"`{c}`" for c in configs)
+    else:
+        detail = (
+            "Configs: "
+            + ", ".join(f"`{c}`" for c in configs[:3])
+            + f", +{len(configs) - 3} more"
+        )
+    return primary, detail
+
+
+def emit(verdict: str, primary: str, detail: str = "") -> None:
+    """Write a single tab-separated result line, stripping any embedded
+    tabs/newlines so the YAML's `cut -f1/-f2/-f3` parsing stays reliable."""
+    def clean(s: str) -> str:
+        return s.replace("\t", " ").replace("\n", " ").strip()
+    print(f"{verdict}\t{clean(primary)}\t{clean(detail)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dep-map", required=True)
@@ -214,16 +323,16 @@ def main() -> None:
     try:
         alert = json.load(sys.stdin)
     except json.JSONDecodeError as exc:
-        print(f"skip\tmalformed alert JSON: {exc}")
+        emit("skip", f"Malformed alert JSON: {exc}.")
         sys.exit(0)
 
     pkg = alert.get("dependency", {}).get("package", {})
     if pkg.get("ecosystem") != "maven":
-        print(f"skip\tnon-maven ecosystem: {pkg.get('ecosystem')!r}")
+        emit("skip", f"Non-Maven ecosystem ({pkg.get('ecosystem')!r}) — out of scope.")
         return
     pkg_name = pkg.get("name", "")
     if not pkg_name:
-        print("skip\tmissing dependency.package.name in alert")
+        emit("skip", "Missing `dependency.package.name` in alert payload.")
         return
 
     with open(args.dep_map) as f:
@@ -235,28 +344,25 @@ def main() -> None:
 
     occurrences = find_occurrences(pkg_name, dep_map)
     if not occurrences:
-        print(f"skip\tno occurrence of {pkg_name} found in resolved dep graph")
+        emit("skip", f"No occurrence of `{pkg_name}` found in the resolved "
+                     "dependency graph.")
         return
 
-    # Split off occurrences in unreachable included-build modules. If every
-    # occurrence is unreachable, dismiss with an explicit reason. If at least
-    # one occurrence is in reachable code, the unreachable ones are ignored
-    # (they can't introduce a vulnerability into the shipped APK on their own).
     reachable_occs = [o for o in occurrences if o.get("reachable", True)]
     unreachable_occs = [o for o in occurrences if not o.get("reachable", True)]
 
     if not reachable_occs:
-        # `unreachable_occs` is occurrences of THIS package that landed in
-        # unreachable modules. The listed paths are exactly the modules where
-        # the vulnerable dependency lives — NOT a dump of every unreachable
-        # module in the composite.
+        # `unreachable_occs` enumerates only the modules where THIS package
+        # was found — not every unreachable module in the composite.
         modules = sorted({o["project"] for o in unreachable_occs})
-        shown = ", ".join(modules[:6])
+        shown = ", ".join(f"`{m}`" for m in modules[:6])
         more = "" if len(modules) <= 6 else f" (+{len(modules) - 6} more)"
-        print(
-            "dismiss\tdependency only used by unreachable included-build "
-            f"module(s): {shown}{more}"
+        primary = (
+            "**Only used by unreachable included-build module(s):** "
+            f"{shown}{more}. No root module consumes them, so the vulnerable "
+            "code cannot reach the shipped APK."
         )
+        emit("dismiss", primary)
         return
 
     verdicts = [
@@ -266,22 +372,18 @@ def main() -> None:
 
     unsafe = [(o, v) for o, v in zip(reachable_occs, verdicts) if v[0] == "unsafe"]
     if unsafe:
-        reasons = []
-        for o, (_, reason) in unsafe[:5]:
-            reasons.append(f"{o['project']}/{o['config']}: {reason}")
-        more = "" if len(unsafe) <= 5 else f" (+{len(unsafe) - 5} more)"
-        print(f"skip\t{'; '.join(reasons)}{more}")
+        first_o, (_, first_reason) = unsafe[0]
+        primary = format_unsafe_reason(first_o, first_reason)
+        detail = ""
+        if len(unsafe) > 1:
+            detail = f"+ {len(unsafe) - 1} more unsafe occurrence(s) with similar reasons."
+        emit("skip", primary, detail)
         return
 
-    safe_configs = sorted({o["config"] for o in reachable_occs})
-    suffix = (
-        f"; {len(unreachable_occs)} unreachable occurrence(s) ignored"
-        if unreachable_occs else ""
+    primary, detail = format_safe_summary(
+        reachable_occs, verdicts, len(unreachable_occs)
     )
-    print(
-        f"dismiss\tall {len(reachable_occs)} reachable occurrence(s) safe; "
-        f"configs: {', '.join(safe_configs)}{suffix}"
-    )
+    emit("dismiss", primary, detail)
 
 
 if __name__ == "__main__":

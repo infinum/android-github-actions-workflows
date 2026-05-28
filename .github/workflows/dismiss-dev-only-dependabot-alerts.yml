@@ -268,21 +268,36 @@ jobs:
           CONFIG=build/dependabot-tools/dismiss-config.json
           CURRENCY=build/dependabot-tools/trusted-currency.json
 
-          TRUSTED_SOURCES_PRETTY=$(jq -r '.trusted_sources | join(", ")' "$CONFIG")
-          SCOPES_PRETTY=$(jq -r '.trusted_source_scopes | join(", ")' "$CONFIG")
-          PROD_BT_PRETTY=$(jq -r '.production_build_types | join(", ")' "$CONFIG")
-          PROD_V_PRETTY=$(jq -r '.production_variants | join(", ")' "$CONFIG")
+          # Pretty values, each entry wrapped in backticks for the table.
+          TRUSTED_SOURCES_TICKED=$(jq -r '.trusted_sources | map("`" + . + "`") | join(", ")' "$CONFIG")
+          SCOPES_TICKED=$(jq -r '.trusted_source_scopes | map("`" + . + "`") | join(", ")' "$CONFIG")
+          PROD_BT_TICKED=$(jq -r '.production_build_types | map("`" + . + "`") | join(", ")' "$CONFIG")
+          PROD_V_TICKED=$(jq -r '.production_variants | map("`" + . + "`") | join(", ")' "$CONFIG")
           THRESHOLD=$(jq -r '.currency_threshold' "$CONFIG")
+          PROD_V_DISPLAY=${PROD_V_TICKED:-_none_}
 
           {
-            echo "### Decisions"
+            echo "## Configuration"
             echo ""
-            echo "- Trusted sources: \`${TRUSTED_SOURCES_PRETTY}\`"
-            echo "- Trusted-source scopes: \`${SCOPES_PRETTY}\`"
-            echo "- Production build types: \`${PROD_BT_PRETTY}\`"
-            echo "- Production variants (override): \`${PROD_V_PRETTY:-<none>}\`"
-            echo "- Currency threshold: \`${THRESHOLD}\`"
-            echo "- Dry run: \`${DRY_RUN}\`"
+            echo "| Setting | Value | What it controls |"
+            echo "| --- | --- | --- |"
+            echo "| Trusted sources | ${TRUSTED_SOURCES_TICKED} | Maven groups whose transitives can be dismissed when the top-level is current. Anything else that pulls in a vulnerable dep is treated as unsafe. |"
+            echo "| Trusted-source scopes | ${SCOPES_TICKED} | Where the trusted-source rule applies. Other scopes (\`production\`, \`codegen-main\`) stay closed unless explicitly added. |"
+            echo "| Production build types | ${PROD_BT_TICKED} | Build types whose \`CompileClasspath\`/\`RuntimeClasspath\` configs count as production-shipping. |"
+            echo "| Production variants (override) | ${PROD_V_DISPLAY} | When non-empty, replaces \`production-build-types\` with an exact variant list. |"
+            echo "| Currency threshold | \`${THRESHOLD}\` | How close to the latest Maven release a trusted top-level must be. \`latest\` = exact match; \`same-minor\` = same \`major.minor\`. |"
+            echo "| Dry run | \`${DRY_RUN}\` | When \`true\`, decisions are logged but no alerts are dismissed. |"
+            echo ""
+            echo "## Decisions"
+            echo ""
+            echo "An alert is **dismissed** only when every reachable occurrence is in a safe configuration:"
+            echo ""
+            echo "- **Test source sets** (\`test*\`, \`*AndroidTest*\`, \`*UnitTest*\`)"
+            echo "- **Non-production variants** (build-type suffix not in \`production-build-types\`)"
+            echo "- **Build tooling** (lint checks, Detekt, Jacoco, Dokka, etc.)"
+            echo "- **Trusted-source transitives** in opted-in scopes, when the trusted top-level is current"
+            echo ""
+            echo "Otherwise the verdict is **skipped** — the alert stays open for human review. Occurrences in unreachable included-build modules are ignored. Click any alert number below to open it on GitHub."
             echo ""
             echo "| Alert | Package | Severity | Decision | Reason |"
             echo "| ----- | ------- | -------- | -------- | ------ |"
@@ -299,16 +314,32 @@ jobs:
               --currency-map "${CURRENCY}")
 
             DECISION=$(printf "%s" "${RESULT}" | cut -f1)
-            REASON=$(printf "%s" "${RESULT}" | cut -f2-)
+            REASON=$(printf "%s" "${RESULT}" | cut -f2)
+            DETAIL=$(printf "%s" "${RESULT}" | cut -f3-)
+
+            case "${DECISION}" in
+              dismiss) MARKER="✅ **Dismissed**" ;;
+              skip)    MARKER="❌ **Skipped**"   ;;
+              *)       MARKER="${DECISION}"      ;;
+            esac
+
+            ALERT_LINK="[#${NUM}](https://github.com/${REPO}/security/dependabot/${NUM})"
+
+            if [ -n "${DETAIL}" ]; then
+              REASON_CELL="${REASON}<br><sub><em>${DETAIL}</em></sub>"
+            else
+              REASON_CELL="${REASON}"
+            fi
 
             printf "| %s | %s | %s | %s | %s |\n" \
-              "${NUM}" "${PKG}" "${SEV}" "${DECISION}" "${REASON}" >> "$GITHUB_STEP_SUMMARY"
+              "${ALERT_LINK}" "${PKG}" "${SEV}" "${MARKER}" "${REASON_CELL}" >> "$GITHUB_STEP_SUMMARY"
 
             if [ "${DECISION}" = "dismiss" ] && [ "${DRY_RUN}" != "true" ]; then
-              COMMENT="Auto-dismissed by ${WORKFLOW_REF}. ${REASON}."
+              # Keep the dismissal API comment plain text (no markdown).
+              DISMISS_COMMENT="Auto-dismissed by ${WORKFLOW_REF}. ${REASON} ${DETAIL}"
               gh api -X PATCH "repos/${REPO}/dependabot/alerts/${NUM}" \
                 -f state=dismissed \
                 -f dismissed_reason=not_used \
-                -f dismissed_comment="${COMMENT}" >/dev/null
+                -f dismissed_comment="${DISMISS_COMMENT}" >/dev/null
             fi
           done < <(jq -c '.[]' /tmp/dismiss-bot/alerts.json)

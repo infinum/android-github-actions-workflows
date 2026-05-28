@@ -279,8 +279,7 @@ class TestUnreachableVerdict(unittest.TestCase):
         }
         out = _run_main(dep_map, _maven_alert("com.vuln:vuln"))
         self.assertTrue(out.startswith("dismiss\t"), out)
-        self.assertIn("unreachable", out)
-        self.assertIn("only used by", out)
+        self.assertIn("unreachable", out.lower())
         self.assertIn(":foreign:sample", out)
 
     def test_skip_when_present_in_a_reachable_production_classpath(self):
@@ -332,7 +331,8 @@ class TestUnreachableVerdict(unittest.TestCase):
         }
         out = _run_main(dep_map, _maven_alert("com.vuln:vuln"))
         self.assertTrue(out.startswith("dismiss\t"), out)
-        self.assertIn("unreachable occurrence(s) ignored", out)
+        self.assertIn("unreachable", out.lower())
+        self.assertIn("ignored", out.lower())
 
     def test_dismiss_dedupes_module_list(self):
         # Same vuln in two configs of the same unreachable module — the verdict
