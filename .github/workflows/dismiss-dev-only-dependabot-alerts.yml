@@ -231,9 +231,17 @@ jobs:
 
       - name: Parse dependency text into JSON
         run: |
+          # `--included-builds` activates composite-aware parsing: every project
+          # is tagged with its build, and reachability is computed via BFS from
+          # the root build's modules. The file is produced by gather-deps.sh.
+          INCLUDED_BUILDS_ARG=""
+          if [ -s build/dependabot-tools/included-builds.txt ]; then
+            INCLUDED_BUILDS_ARG="--included-builds build/dependabot-tools/included-builds.txt"
+          fi
           python3 .dismiss-bot/scripts/parse-gradle-deps.py \
             --input build/dependabot-tools/gather-deps.txt \
-            --output build/dependabot-tools/dep-config-map.json
+            --output build/dependabot-tools/dep-config-map.json \
+            $INCLUDED_BUILDS_ARG
 
       - name: Build trusted-source currency map
         run: |

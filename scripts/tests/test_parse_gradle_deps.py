@@ -148,5 +148,114 @@ class TestParser(unittest.TestCase):
         )
 
 
+# A composite-build fixture: root + one included build (`:foreign`) with three
+# modules — one substituted in, one reachable transitively, one unreachable.
+COMPOSITE_FIXTURE = """\
+> Task :app:dependencies
+
+------------------------------------------------------------
+Project ':app'
+------------------------------------------------------------
+
+debugCompileClasspath - Compile classpath for compilation 'debug'.
++--- com.example.lib:thing -> project :foreign:used
+\\--- project :common
+
+BUILD SUCCESSFUL in 1s
+
+> Task :common:dependencies
+
+------------------------------------------------------------
+Project ':common'
+------------------------------------------------------------
+
+debugCompileClasspath - Compile classpath for compilation 'debug'.
+\\--- com.example:transit:1.0
+
+BUILD SUCCESSFUL in 1s
+
+> Task :foreign:used:dependencies
+
+------------------------------------------------------------
+Project ':foreign:used'
+------------------------------------------------------------
+
+debugCompileClasspath - Compile classpath for compilation 'debug'.
+\\--- project :foreign:inner
+
+BUILD SUCCESSFUL in 1s
+
+> Task :foreign:inner:dependencies
+
+------------------------------------------------------------
+Project ':foreign:inner'
+------------------------------------------------------------
+
+debugCompileClasspath - Compile classpath for compilation 'debug'.
+\\--- org.kotlin:stdlib:1.9
+
+BUILD SUCCESSFUL in 1s
+
+> Task :foreign:sample:dependencies
+
+------------------------------------------------------------
+Project ':foreign:sample'
+------------------------------------------------------------
+
+debugCompileClasspath - Compile classpath for compilation 'debug'.
+\\--- com.vuln:vuln:1.0
+
+BUILD SUCCESSFUL in 1s
+"""
+
+
+class TestCompositeReachability(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp()
+        in_path = pathlib.Path(cls.tmpdir) / "composite.txt"
+        out_path = pathlib.Path(cls.tmpdir) / "composite.json"
+        included_path = pathlib.Path(cls.tmpdir) / "included.txt"
+        in_path.write_text(COMPOSITE_FIXTURE)
+        included_path.write_text(":foreign\n")
+        import sys
+        argv = sys.argv
+        sys.argv = [
+            "parse",
+            "--input", str(in_path),
+            "--output", str(out_path),
+            "--included-builds", str(included_path),
+        ]
+        try:
+            parser.main()
+        finally:
+            sys.argv = argv
+        cls.out = json.loads(out_path.read_text())
+
+    def test_every_project_is_tagged_with_build(self):
+        builds = {p: data["build"] for p, data in self.out["projects"].items()}
+        self.assertEqual(builds[":app"], "root")
+        self.assertEqual(builds[":common"], "root")
+        self.assertEqual(builds[":foreign:used"], "foreign")
+        self.assertEqual(builds[":foreign:inner"], "foreign")
+        self.assertEqual(builds[":foreign:sample"], "foreign")
+
+    def test_root_modules_are_reachable(self):
+        self.assertTrue(self.out["projects"][":app"]["reachable"])
+        self.assertTrue(self.out["projects"][":common"]["reachable"])
+
+    def test_substituted_module_is_reachable(self):
+        # `:foreign:used` is reached via `com.example.lib:thing -> project :foreign:used`
+        self.assertTrue(self.out["projects"][":foreign:used"]["reachable"])
+
+    def test_transitive_via_substituted_is_reachable(self):
+        # `:foreign:inner` is reached via `:foreign:used -> project :foreign:inner`
+        self.assertTrue(self.out["projects"][":foreign:inner"]["reachable"])
+
+    def test_sample_module_is_unreachable(self):
+        # No root module references `:foreign:sample`; it should be unreachable
+        self.assertFalse(self.out["projects"][":foreign:sample"]["reachable"])
+
+
 if __name__ == "__main__":
     unittest.main()

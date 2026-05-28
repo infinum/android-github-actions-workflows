@@ -3,10 +3,19 @@
 Parse the textual output of `gradle :a:dependencies :b:dependencies ... :buildEnvironment`
 into a JSON file that categorize-alert.py can consume.
 
+Composite-build aware: when `--included-builds` is supplied, every project is
+tagged with the build it belongs to and the parser computes reachability —
+a BFS over intra-build and cross-build project references, seeded with the
+root build's modules. Projects that no root-build module can reach (directly
+or transitively) are tagged `reachable: false` so the categorizer can dismiss
+alerts that only surface in those modules.
+
 Output shape:
 {
   "projects": {
     ":app": {
+      "build": "root",
+      "reachable": true,
       "configurations": {
         "debugCompileClasspath": {
           "allDeps": [
@@ -15,6 +24,11 @@ Output shape:
           ]
         }
       }
+    },
+    ":android-common-android:sample": {
+      "build": "android-common-android",
+      "reachable": false,
+      "configurations": {...}
     }
   },
   "buildscriptClasspath": {
@@ -39,16 +53,14 @@ from typing import Optional
 TASK_HEADER = re.compile(r"^> Task (\S+)(?:\s+.*)?$")
 TREE_LINE = re.compile(r"^([ |+\\]+)--- (.+)$")
 # A configuration header line: name [- description] [(n)]
-# Examples we need to match:
-#   debugCompileClasspath - Compile classpath for compilation 'debug'.
-#   testImplementation - Implementation only dependencies for source set 'test'. (n)
-#   classpath
-#   _agp_internal_devDebugAndroidTest_kspClasspath
-#   _internal-unified-test-platform-android-test-plugin-host-emulator-control - ...
 # Hyphenated config names exist in AGP internals; allow '-' in the identifier.
 CONFIG_HEADER = re.compile(r"^([_a-zA-Z][a-zA-Z0-9_-]*)(?:\s*-\s+.*)?(?:\s*\(n\))?$")
 LEGEND_LINE = re.compile(r"^\([cnr*]\)\s")
 SKIP_STATUSES = {"UP-TO-DATE", "SKIPPED", "NO-SOURCE"}
+
+# Matches `project :path` and `... -> project :path` for cross-project references
+# in the dep tree. Captures the colon-prefixed project path.
+PROJECT_REF = re.compile(r"(?:^|-> )project\s+(:[^\s()]+)")
 
 
 def parse_dep_coord(content: str) -> Optional[str]:
@@ -66,6 +78,9 @@ def parse_dep_coord(content: str) -> Optional[str]:
         if content.endswith(marker):
             content = content[: -len(marker)].rstrip()
     if " -> " in content:
+        # Distinguish substituted coord (-> project :X) from version conflict resolution.
+        if "-> project " in content:
+            return None
         coord_part, resolved = content.rsplit(" -> ", 1)
         resolved = resolved.strip()
         bits = coord_part.split(":")
@@ -78,13 +93,78 @@ def parse_dep_coord(content: str) -> Optional[str]:
     return ":".join(bits[:3])
 
 
+def parse_project_refs(content: str) -> list:
+    """Return any `:path` project references mentioned in the tree-line content.
+    Captures both `project :app` (intra-build) and `... -> project :build:m`
+    (substituted cross-build)."""
+    cleaned = content.strip()
+    for marker in (" (*)", " (n)", " (c)"):
+        if cleaned.endswith(marker):
+            cleaned = cleaned[: -len(marker)].rstrip()
+    return [m.group(1) for m in PROJECT_REF.finditer(cleaned)]
+
+
+def load_lines(path: Optional[str]) -> list:
+    if not path:
+        return []
+    out = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                out.append(line)
+    return out
+
+
+def derive_build(project_path: str, included_builds: list, root_name: str) -> str:
+    """`included_builds` are like `[':android-common-android', ':kotlin-plugins']`.
+    Longest-prefix match wins (in case a build name is a prefix of another)."""
+    for build in sorted(included_builds, key=len, reverse=True):
+        if project_path == build or project_path.startswith(build + ":"):
+            return build.lstrip(":")
+    return root_name
+
+
+def compute_reachability(known_projects: set, project_refs: dict,
+                         included_builds: list, root_name: str) -> set:
+    """BFS from every root-build project, following project references. Returns
+    the set of reachable project paths. Root projects are always reachable."""
+    seeds = {p for p in known_projects
+             if derive_build(p, included_builds, root_name) == root_name}
+    reachable = set(seeds)
+    queue = list(seeds)
+    while queue:
+        p = queue.pop()
+        for ref in project_refs.get(p, ()):
+            if ref not in reachable:
+                reachable.add(ref)
+                queue.append(ref)
+    return reachable
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--input", required=True, help="Path to gradle dependencies text output")
     ap.add_argument("--output", required=True, help="Path to write dep-config-map JSON")
+    ap.add_argument(
+        "--included-builds", required=False,
+        help="Path to a text file listing included-build names (one per line, "
+             "with leading `:`, e.g. `:android-common-android`). Optional; omit "
+             "for single-build projects.",
+    )
+    ap.add_argument(
+        "--root-build-name", default="root",
+        help="Display name for the root build (used in JSON `build` tags). "
+             "Default: `root`.",
+    )
     args = ap.parse_args()
 
+    included_builds = load_lines(args.included_builds)
+    root_name = args.root_build_name
+
     result: dict = {"projects": {}, "buildscriptClasspath": {}}
+    project_refs: dict = {}  # project_path -> set of referenced project paths
+    known_projects: set = set()  # every project we've seen a :dependencies task for
 
     current_task: Optional[str] = None
     in_buildscript = False
@@ -130,7 +210,6 @@ def main() -> None:
             if m:
                 commit_config()
                 task = m.group(1)
-                # Pull the status suffix back out of the full line, if any.
                 rest = line[len("> Task ") + len(task):].strip()
                 status = rest.split()[0] if rest else None
 
@@ -146,6 +225,13 @@ def main() -> None:
                     current_task = task
                     current_project = task[: -len(":dependencies")] or ":"
                     in_buildscript = False
+                    if current_project not in (":", None):
+                        known_projects.add(current_project)
+                        # Ensure project entry exists for tagging even if all
+                        # configurations end up empty.
+                        result["projects"].setdefault(
+                            current_project, {"configurations": {}}
+                        )
                 elif task == ":buildEnvironment":
                     current_task = task
                     current_project = ":"
@@ -157,7 +243,6 @@ def main() -> None:
             if current_task is None:
                 continue
 
-            # Section delimiters and headers we don't care about
             if (
                 stripped.startswith("-------")
                 or stripped.startswith("Project '")
@@ -184,11 +269,16 @@ def main() -> None:
                     continue
                 prefix = tm.group(1)
                 depth = (len(prefix) - 1) // 5
-                coord = parse_dep_coord(tm.group(2))
+                content = tm.group(2)
+                coord = parse_dep_coord(content)
+
+                # Track project references for reachability — independent of
+                # depth, and only for project-config trees (not buildscript).
+                if not in_buildscript and current_project is not None:
+                    for ref in parse_project_refs(content):
+                        project_refs.setdefault(current_project, set()).add(ref)
 
                 if depth == 0:
-                    # New top-level entry; reset attribution. Project deps and
-                    # constraints set this to None (no Maven coord to attribute).
                     current_top_level = coord
 
                 if coord is None:
@@ -200,7 +290,6 @@ def main() -> None:
                 continue
 
             if stripped == "No dependencies":
-                # Configuration exists but empty; will be filtered later.
                 continue
 
             cm = CONFIG_HEADER.match(stripped)
@@ -210,18 +299,32 @@ def main() -> None:
                 current_deps = {}
                 current_top_level = None
                 continue
-            # Anything else: silently skip.
 
     commit_config()
 
-    # Drop configurations with no resolved deps to keep the JSON lean.
+    # Reachability is BFS from root-build projects over project_refs edges.
+    # `known_projects` is every project we ran `:dependencies` on; that's the
+    # universe we want to mark. Refs to projects we did NOT analyze (rare —
+    # happens if a module appears as a dep but not in modules.txt) get marked
+    # reachable but don't end up in `result["projects"]`.
+    if included_builds:
+        reachable = compute_reachability(
+            known_projects, project_refs, included_builds, root_name
+        )
+    else:
+        # Single-build project: every project is trivially reachable.
+        reachable = set(known_projects)
+
+    # Drop configurations with no resolved deps, but keep the project entry
+    # itself for tagging (so unreachable empty modules still appear).
     for proj_path in list(result["projects"].keys()):
         proj = result["projects"][proj_path]
         proj["configurations"] = {
-            k: v for k, v in proj["configurations"].items() if v["allDeps"]
+            k: v for k, v in proj.get("configurations", {}).items() if v["allDeps"]
         }
-        if not proj["configurations"]:
-            del result["projects"][proj_path]
+        proj["build"] = derive_build(proj_path, included_builds, root_name)
+        proj["reachable"] = proj_path in reachable if included_builds else True
+
     for proj_path in list(result["buildscriptClasspath"].keys()):
         if not result["buildscriptClasspath"][proj_path]["allDeps"]:
             del result["buildscriptClasspath"][proj_path]
@@ -229,9 +332,11 @@ def main() -> None:
     with open(args.output, "w") as out:
         json.dump(result, out)
 
-    num_configs = sum(len(p["configurations"]) for p in result["projects"].values())
+    num_configs = sum(len(p.get("configurations", {})) for p in result["projects"].values())
+    num_unreachable = sum(1 for p in result["projects"].values() if not p["reachable"])
     print(
-        f"Parsed {num_configs} configurations across {len(result['projects'])} projects; "
+        f"Parsed {num_configs} configurations across {len(result['projects'])} "
+        f"projects ({num_unreachable} unreachable); "
         f"buildscript classpath entries: {len(result['buildscriptClasspath'])}",
         file=sys.stderr,
     )

@@ -173,6 +173,10 @@ def categorize_occurrence(occ: dict, pkg_name: str, config: dict, currency_map: 
 def find_occurrences(pkg_name: str, dep_map: dict) -> list:
     occurrences = []
     for proj_path, proj_data in dep_map.get("projects", {}).items():
+        # Tags from composite-build-aware parser. Older single-build dep maps
+        # don't set these; treat as root + reachable so existing behavior holds.
+        build = proj_data.get("build", "root")
+        reachable = proj_data.get("reachable", True)
         for config_name, config_data in proj_data.get("configurations", {}).items():
             for dep in config_data.get("allDeps", []):
                 if coord_of(dep.get("id", "")) == pkg_name:
@@ -180,15 +184,21 @@ def find_occurrences(pkg_name: str, dep_map: dict) -> list:
                         "project": proj_path,
                         "config": config_name,
                         "via": "project",
+                        "build": build,
+                        "reachable": reachable,
                         "top_levels": list(dep.get("topLevels", [])),
                     })
     for proj_path, bs_data in dep_map.get("buildscriptClasspath", {}).items():
+        # The buildscript classpath always belongs to the root build and is
+        # reachable by definition (it determines how the build itself runs).
         for dep in bs_data.get("allDeps", []):
             if coord_of(dep.get("id", "")) == pkg_name:
                 occurrences.append({
                     "project": proj_path,
                     "config": "classpath",
                     "via": "buildscript",
+                    "build": "root",
+                    "reachable": True,
                     "top_levels": list(dep.get("topLevels", [])),
                 })
     return occurrences
@@ -228,19 +238,50 @@ def main() -> None:
         print(f"skip\tno occurrence of {pkg_name} found in resolved dep graph")
         return
 
-    verdicts = [categorize_occurrence(occ, pkg_name, config, currency_map) for occ in occurrences]
+    # Split off occurrences in unreachable included-build modules. If every
+    # occurrence is unreachable, dismiss with an explicit reason. If at least
+    # one occurrence is in reachable code, the unreachable ones are ignored
+    # (they can't introduce a vulnerability into the shipped APK on their own).
+    reachable_occs = [o for o in occurrences if o.get("reachable", True)]
+    unreachable_occs = [o for o in occurrences if not o.get("reachable", True)]
 
-    unsafe = [(occ, v) for occ, v in zip(occurrences, verdicts) if v[0] == "unsafe"]
+    if not reachable_occs:
+        # `unreachable_occs` is occurrences of THIS package that landed in
+        # unreachable modules. The listed paths are exactly the modules where
+        # the vulnerable dependency lives — NOT a dump of every unreachable
+        # module in the composite.
+        modules = sorted({o["project"] for o in unreachable_occs})
+        shown = ", ".join(modules[:6])
+        more = "" if len(modules) <= 6 else f" (+{len(modules) - 6} more)"
+        print(
+            "dismiss\tdependency only used by unreachable included-build "
+            f"module(s): {shown}{more}"
+        )
+        return
+
+    verdicts = [
+        categorize_occurrence(o, pkg_name, config, currency_map)
+        for o in reachable_occs
+    ]
+
+    unsafe = [(o, v) for o, v in zip(reachable_occs, verdicts) if v[0] == "unsafe"]
     if unsafe:
         reasons = []
-        for occ, (_, reason) in unsafe[:5]:
-            reasons.append(f"{occ['project']}/{occ['config']}: {reason}")
+        for o, (_, reason) in unsafe[:5]:
+            reasons.append(f"{o['project']}/{o['config']}: {reason}")
         more = "" if len(unsafe) <= 5 else f" (+{len(unsafe) - 5} more)"
         print(f"skip\t{'; '.join(reasons)}{more}")
         return
 
-    safe_configs = sorted({occ["config"] for occ in occurrences})
-    print(f"dismiss\tall {len(occurrences)} occurrence(s) safe; configs: {', '.join(safe_configs)}")
+    safe_configs = sorted({o["config"] for o in reachable_occs})
+    suffix = (
+        f"; {len(unreachable_occs)} unreachable occurrence(s) ignored"
+        if unreachable_occs else ""
+    )
+    print(
+        f"dismiss\tall {len(reachable_occs)} reachable occurrence(s) safe; "
+        f"configs: {', '.join(safe_configs)}{suffix}"
+    )
 
 
 if __name__ == "__main__":

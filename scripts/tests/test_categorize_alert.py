@@ -1,8 +1,12 @@
 """Unit tests for categorize-alert.py — exercises the 12 cases from the handoff
 plus the helper functions, by calling `categorize_occurrence` directly."""
+import io
+import json
 import pathlib
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _helpers import load  # noqa: E402
@@ -210,6 +214,151 @@ class TestNoAttribution(unittest.TestCase):
             o, "com.google.guava:guava", DEFAULT_CONFIG, {})
         self.assertEqual(verdict, "unsafe", reason)
         self.assertIn("no top-level", reason)
+
+
+# --- End-to-end tests of main() for the unreachable verdict --------------
+
+def _run_main(dep_map: dict, alert: dict, config: dict = None, currency: dict = None) -> str:
+    """Invoke categorize-alert.py's main() with the given inputs; returns stdout."""
+    if config is None:
+        config = DEFAULT_CONFIG
+    if currency is None:
+        currency = {}
+    tmpdir = tempfile.mkdtemp()
+    dep_map_path = pathlib.Path(tmpdir) / "dep.json"
+    config_path = pathlib.Path(tmpdir) / "config.json"
+    currency_path = pathlib.Path(tmpdir) / "currency.json"
+    dep_map_path.write_text(json.dumps(dep_map))
+    config_path.write_text(json.dumps(config))
+    currency_path.write_text(json.dumps(currency))
+
+    argv_saved = sys.argv
+    stdin_saved = sys.stdin
+    sys.argv = [
+        "categorize",
+        "--dep-map", str(dep_map_path),
+        "--config", str(config_path),
+        "--currency-map", str(currency_path),
+    ]
+    sys.stdin = io.StringIO(json.dumps(alert))
+    buf = io.StringIO()
+    try:
+        with redirect_stdout(buf):
+            cat.main()
+    finally:
+        sys.argv = argv_saved
+        sys.stdin = stdin_saved
+    return buf.getvalue()
+
+
+def _maven_alert(pkg_name: str) -> dict:
+    return {
+        "number": 1,
+        "dependency": {"package": {"ecosystem": "maven", "name": pkg_name}},
+        "security_advisory": {"severity": "low"},
+    }
+
+
+def _project_entry(build: str, reachable: bool, configs: dict) -> dict:
+    return {"build": build, "reachable": reachable, "configurations": configs}
+
+
+class TestUnreachableVerdict(unittest.TestCase):
+    def test_dismiss_when_only_in_unreachable_modules(self):
+        # The vuln coord appears only in `:foreign:sample`, marked unreachable.
+        dep_map = {
+            "projects": {
+                ":foreign:sample": _project_entry(
+                    "foreign", False,
+                    {"debugCompileClasspath": {"allDeps": [
+                        {"id": "com.vuln:vuln:1.0", "topLevels": ["com.vuln:vuln:1.0"]}
+                    ]}}
+                ),
+            },
+            "buildscriptClasspath": {},
+        }
+        out = _run_main(dep_map, _maven_alert("com.vuln:vuln"))
+        self.assertTrue(out.startswith("dismiss\t"), out)
+        self.assertIn("unreachable", out)
+        self.assertIn("only used by", out)
+        self.assertIn(":foreign:sample", out)
+
+    def test_skip_when_present_in_a_reachable_production_classpath(self):
+        # Same vuln also appears in a reachable production runtime classpath —
+        # should fall back to the existing categorizer verdict (skip).
+        dep_map = {
+            "projects": {
+                ":app": _project_entry(
+                    "root", True,
+                    {"releaseRuntimeClasspath": {"allDeps": [
+                        {"id": "com.vuln:vuln:1.0", "topLevels": ["com.vuln:vuln:1.0"]}
+                    ]}}
+                ),
+                ":foreign:sample": _project_entry(
+                    "foreign", False,
+                    {"debugCompileClasspath": {"allDeps": [
+                        {"id": "com.vuln:vuln:1.0", "topLevels": ["com.vuln:vuln:1.0"]}
+                    ]}}
+                ),
+            },
+            "buildscriptClasspath": {},
+        }
+        out = _run_main(dep_map, _maven_alert("com.vuln:vuln"))
+        self.assertTrue(out.startswith("skip\t"), out)
+        # Reason should mention the reachable production occurrence, not the sample.
+        self.assertIn(":app", out)
+        self.assertNotIn(":foreign:sample", out)
+
+    def test_dismiss_with_count_when_mixed_reachable_safe_and_unreachable(self):
+        # Reachable occurrence is in a safe (test) configuration; unreachable
+        # occurrence elsewhere. Should dismiss based on reachable safe verdict
+        # and note the ignored unreachable count.
+        dep_map = {
+            "projects": {
+                ":app": _project_entry(
+                    "root", True,
+                    {"testImplementation": {"allDeps": [
+                        {"id": "com.vuln:vuln:1.0", "topLevels": ["junit:junit:4.13"]}
+                    ]}}
+                ),
+                ":foreign:sample": _project_entry(
+                    "foreign", False,
+                    {"debugCompileClasspath": {"allDeps": [
+                        {"id": "com.vuln:vuln:1.0", "topLevels": ["com.vuln:vuln:1.0"]}
+                    ]}}
+                ),
+            },
+            "buildscriptClasspath": {},
+        }
+        out = _run_main(dep_map, _maven_alert("com.vuln:vuln"))
+        self.assertTrue(out.startswith("dismiss\t"), out)
+        self.assertIn("unreachable occurrence(s) ignored", out)
+
+    def test_dismiss_dedupes_module_list(self):
+        # Same vuln in two configs of the same unreachable module — the verdict
+        # should list the module once, not twice.
+        dep_map = {
+            "projects": {
+                ":foreign:sample": _project_entry(
+                    "foreign", False,
+                    {
+                        "debugCompileClasspath": {"allDeps": [
+                            {"id": "com.vuln:vuln:1.0",
+                             "topLevels": ["com.vuln:vuln:1.0"]}
+                        ]},
+                        "debugRuntimeClasspath": {"allDeps": [
+                            {"id": "com.vuln:vuln:1.0",
+                             "topLevels": ["com.vuln:vuln:1.0"]}
+                        ]},
+                    },
+                ),
+            },
+            "buildscriptClasspath": {},
+        }
+        out = _run_main(dep_map, _maven_alert("com.vuln:vuln"))
+        self.assertTrue(out.startswith("dismiss\t"), out)
+        # :foreign:sample appears exactly once in the reason text
+        self.assertEqual(out.count(":foreign:sample"), 1, out)
 
 
 if __name__ == "__main__":
