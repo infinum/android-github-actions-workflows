@@ -1,0 +1,30 @@
+name: Test dismissal scripts
+
+on:
+  push:
+    paths:
+      - "scripts/**"
+      - ".github/workflows/test-scripts.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+      - ".github/workflows/test-scripts.yml"
+
+jobs:
+  test:
+    name: Run script tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run Python unit tests
+        run: python -m unittest discover -s scripts/tests -p "test_*.py" -v
+
+      - name: Run gather-deps.sh test
+        run: bash scripts/tests/test_gather_deps.sh
