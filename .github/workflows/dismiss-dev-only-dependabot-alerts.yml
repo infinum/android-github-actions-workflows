@@ -17,7 +17,7 @@ on:
         description: |
           App ID (or Client ID) of the `infinum-dependabot-dismisser` GitHub
           App. Passed through to `actions/create-github-app-token@v3` via its
-          `client-id` input, which accepts either form. Kept named `app-id`
+          `client-id` input, which accepts either form. Kept named `client-id`
           here for symmetry with the org-level variable
           `DEPENDABOT_DISMISSER_BOT_APP_ID`.
       dry-run:
