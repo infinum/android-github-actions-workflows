@@ -152,6 +152,15 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
+          # lfs left at default (false): avoid bulk-downloading every LFS
+          # object. Repos that LFS-track the wrapper get it via the next step.
+
+      # Some caller repos store gradle-wrapper.jar in Git LFS (e.g. an
+      # `*.jar filter=lfs` rule). The checkout above leaves it as a pointer
+      # file, which the JVM rejects as "Invalid or corrupt jarfile". Pull only
+      # that one object so `./gradlew` can launch. No-op on repos without LFS.
+      - name: Materialize Gradle wrapper from LFS
+        run: git lfs pull --include="gradle/wrapper/gradle-wrapper.jar"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
