@@ -15,7 +15,7 @@ The analysis pipeline is packaged as a **composite action**
 ([`.github/actions/dismiss-dev-only-dependabot-alerts`](.github/actions/dismiss-dev-only-dependabot-alerts/action.yml)) —
 the single source of truth. Two entry points wrap it:
 
-- **Reusable workflow** (this file) — for the common case that needs no
+- **Reusable workflow** (the workflow linked above) — for the common case that needs no
   custom setup. It gates on the open-alert count, checks out the caller repo,
   then delegates to the composite action.
 - **Composite action, called directly** — for projects that must run their
