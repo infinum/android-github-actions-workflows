@@ -1,0 +1,331 @@
+name: Dismiss dev-only Dependabot alerts
+description: |
+  Runs a Gradle-based dependency analysis on the already-checked-out caller
+  repository and auto-dismisses Dependabot alerts whose every reachable
+  occurrence is in a dev-only (non-production) configuration.
+
+  This composite action is the engine. It assumes the caller repository is
+  ALREADY checked out in the workspace and does NOT check it out itself, nor
+  does it source any secrets — that lets callers run their own pre-steps
+  (install tools, fetch secrets from any backend) between checkout and this
+  action. The thin reusable workflow in this repo wraps it for the common
+  case that needs no custom setup.
+
+inputs:
+  client-id:
+    required: true
+    description: |
+      App ID (or Client ID) of the `infinum-dependabot-dismisser` GitHub App.
+      Passed through to `actions/create-github-app-token@v3` via its
+      `client-id` input, which accepts either form.
+  app-private-key:
+    required: true
+    description: |
+      PEM private key of the `infinum-dependabot-dismisser` GitHub App. Used
+      to mint an installation access token at runtime with
+      `Dependabot alerts: read/write` on the caller repo. The default
+      GITHUB_TOKEN cannot access the Dependabot Alerts REST API. Composite
+      actions have no `secrets:` block, so this is an input; pass it from a
+      secret and GitHub still masks it in logs.
+  dry-run:
+    default: "true"
+    description: "When true, decisions are written to the job summary but no alerts are dismissed."
+  java-version:
+    default: "17"
+    description: "JDK version for the Gradle run. Default 17; set to 11 for projects on AGP 7.x or older."
+  trusted-sources:
+    default: ""
+    description: |
+      Additional Maven-group glob patterns (one per line) to trust beyond the
+      built-in defaults (com.android.*, androidx.*, org.jetbrains.kotlin.*,
+      org.jetbrains.*, com.google.*). Caller lines append to the defaults.
+      Patterns use `group.with.dots.*` or exact `group:artifact`.
+  trusted-source-scopes:
+    default: "buildscript"
+    description: |
+      Scopes (one per line) where the trusted-source rule applies. Allowed:
+      buildscript, production, codegen-main. Default: buildscript only.
+  production-build-types:
+    default: "release"
+    description: |
+      Build type names (one per line, lowercase) considered production-shipping.
+      Used to identify variant prefixes whose CompileClasspath/RuntimeClasspath
+      configurations reach the published APK.
+  production-variants:
+    default: ""
+    description: |
+      Exact variant names (one per line) treated as production-shipping. When
+      non-empty this overrides `production-build-types` — only these variant
+      prefixes count as production.
+  currency-threshold:
+    default: "latest"
+    description: |
+      How close to the latest Maven release a trusted top-level must be.
+      Allowed: `latest` (exact match) or `same-minor` (any patch within
+      latest's major.minor).
+
+runs:
+  using: composite
+  steps:
+    - name: Mint GitHub App installation token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ github.repository_owner }}
+
+    # Fetch alerts once and cache them for later steps. This also self-gates
+    # the heavy work: `has-alerts` is consumed by the `if:` on every step
+    # below, so direct callers skip the Gradle analysis when nothing is open
+    # (the reusable-workflow wrapper additionally gates at the job level).
+    - name: Fetch open Dependabot alerts
+      id: alerts
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        mkdir -p /tmp/dismiss-bot
+        gh api "repos/${REPO}/dependabot/alerts?state=open&per_page=100" --paginate \
+          > /tmp/dismiss-bot/alerts.json
+        COUNT=$(jq 'length' /tmp/dismiss-bot/alerts.json)
+        if [ "${COUNT}" -gt 0 ]; then
+          echo "has-alerts=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has-alerts=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Dismiss dev-only Dependabot alerts"
+            echo ""
+            echo "- Open alerts: \`0\`"
+            echo ""
+            echo "_No open Dependabot alerts. Skipping Gradle analysis._"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Resolve scripts directory
+      if: steps.alerts.outputs.has-alerts == 'true'
+      shell: bash
+      # This action lives at `.github/actions/dismiss-dev-only-dependabot-alerts`,
+      # so the pipeline scripts at the repo root are three levels up. Resolving
+      # them via $GITHUB_ACTION_PATH means we need no separate tooling checkout.
+      run: echo "SCRIPTS_DIR=$(cd "$GITHUB_ACTION_PATH/../../../scripts" && pwd)" >> "$GITHUB_ENV"
+
+    # Some caller repos store gradle-wrapper.jar in Git LFS (e.g. an
+    # `*.jar filter=lfs` rule). The caller's checkout leaves it as a pointer
+    # file, which the JVM rejects as "Invalid or corrupt jarfile". Pull only
+    # that one object so `./gradlew` can launch. No-op on repos without LFS.
+    - name: Materialize Gradle wrapper from LFS
+      if: steps.alerts.outputs.has-alerts == 'true'
+      shell: bash
+      run: git lfs pull --include="gradle/wrapper/gradle-wrapper.jar"
+
+    - name: Set up JDK
+      if: steps.alerts.outputs.has-alerts == 'true'
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - name: Set up Android SDK
+      if: steps.alerts.outputs.has-alerts == 'true'
+      uses: android-actions/setup-android@v4
+
+    - name: Set up Python
+      if: steps.alerts.outputs.has-alerts == 'true'
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+
+    - name: Build dismissal config
+      if: steps.alerts.outputs.has-alerts == 'true'
+      shell: bash
+      env:
+        TRUSTED_SOURCES_EXTRA: ${{ inputs.trusted-sources }}
+        TRUSTED_SOURCE_SCOPES: ${{ inputs.trusted-source-scopes }}
+        PRODUCTION_BUILD_TYPES: ${{ inputs.production-build-types }}
+        PRODUCTION_VARIANTS: ${{ inputs.production-variants }}
+        CURRENCY_THRESHOLD: ${{ inputs.currency-threshold }}
+      run: |
+        set -euo pipefail
+        mkdir -p build/dependabot-tools
+        python3 - <<'PY'
+        import json, os, sys
+
+        def parse_multiline(name):
+            raw = os.environ.get(name, "")
+            return [line.strip() for line in raw.splitlines() if line.strip()]
+
+        defaults = [
+            "com.android.*",
+            "androidx.*",
+            "org.jetbrains.kotlin.*",
+            "org.jetbrains.*",
+            "com.google.*",
+        ]
+        extra = parse_multiline("TRUSTED_SOURCES_EXTRA")
+        trusted_sources = defaults + [p for p in extra if p not in defaults]
+
+        scopes = parse_multiline("TRUSTED_SOURCE_SCOPES")
+        allowed_scopes = {"buildscript", "production", "codegen-main"}
+        bad = [s for s in scopes if s not in allowed_scopes]
+        if bad:
+            print(f"::error::Invalid trusted-source-scopes value(s): {bad}. "
+                  f"Allowed: {sorted(allowed_scopes)}", file=sys.stderr)
+            sys.exit(1)
+
+        threshold = os.environ.get("CURRENCY_THRESHOLD", "").strip()
+        if threshold not in {"latest", "same-minor"}:
+            print(f"::error::Invalid currency-threshold: {threshold!r}. "
+                  f"Allowed: 'latest', 'same-minor'", file=sys.stderr)
+            sys.exit(1)
+
+        config = {
+            "trusted_sources": trusted_sources,
+            "trusted_source_scopes": scopes,
+            "production_build_types": parse_multiline("PRODUCTION_BUILD_TYPES"),
+            "production_variants": parse_multiline("PRODUCTION_VARIANTS"),
+            "currency_threshold": threshold,
+        }
+        with open("build/dependabot-tools/dismiss-config.json", "w") as f:
+            json.dump(config, f, indent=2)
+        print(json.dumps(config, indent=2))
+        PY
+
+    - name: Gather per-module dependency output
+      if: steps.alerts.outputs.has-alerts == 'true'
+      shell: bash
+      run: |
+        chmod +x ./gradlew
+        chmod +x "$SCRIPTS_DIR/gather-deps.sh"
+        "$SCRIPTS_DIR/gather-deps.sh" .
+
+    - name: Parse dependency text into JSON
+      if: steps.alerts.outputs.has-alerts == 'true'
+      shell: bash
+      run: |
+        # `--included-builds` activates composite-aware parsing: every project
+        # is tagged with its build, and reachability is computed via BFS from
+        # the root build's modules. The file is produced by gather-deps.sh.
+        INCLUDED_BUILDS_ARG=""
+        if [ -s build/dependabot-tools/included-builds.txt ]; then
+          INCLUDED_BUILDS_ARG="--included-builds build/dependabot-tools/included-builds.txt"
+        fi
+        python3 "$SCRIPTS_DIR/parse-gradle-deps.py" \
+          --input build/dependabot-tools/gather-deps.txt \
+          --output build/dependabot-tools/dep-config-map.json \
+          $INCLUDED_BUILDS_ARG
+
+    - name: Build trusted-source currency map
+      if: steps.alerts.outputs.has-alerts == 'true'
+      shell: bash
+      run: |
+        python3 "$SCRIPTS_DIR/build-trusted-currency.py" \
+          --dep-map build/dependabot-tools/dep-config-map.json \
+          --alerts /tmp/dismiss-bot/alerts.json \
+          --config build/dependabot-tools/dismiss-config.json \
+          --output build/dependabot-tools/trusted-currency.json
+
+    - name: Categorize and dismiss alerts
+      if: steps.alerts.outputs.has-alerts == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        DEP_MAP=build/dependabot-tools/dep-config-map.json
+        CONFIG=build/dependabot-tools/dismiss-config.json
+        CURRENCY=build/dependabot-tools/trusted-currency.json
+
+        # Pretty values, each entry wrapped in backticks for the table.
+        TRUSTED_SOURCES_TICKED=$(jq -r '.trusted_sources | map("`" + . + "`") | join(", ")' "$CONFIG")
+        SCOPES_TICKED=$(jq -r '.trusted_source_scopes | map("`" + . + "`") | join(", ")' "$CONFIG")
+        PROD_BT_TICKED=$(jq -r '.production_build_types | map("`" + . + "`") | join(", ")' "$CONFIG")
+        PROD_V_TICKED=$(jq -r '.production_variants | map("`" + . + "`") | join(", ")' "$CONFIG")
+        THRESHOLD=$(jq -r '.currency_threshold' "$CONFIG")
+        PROD_V_DISPLAY=${PROD_V_TICKED:-_none_}
+
+        {
+          echo "## Configuration"
+          echo ""
+          echo "| Setting | Value | What it controls |"
+          echo "| --- | --- | --- |"
+          echo "| Trusted sources | ${TRUSTED_SOURCES_TICKED} | Maven groups whose transitives can be dismissed when the top-level is current. Anything else that pulls in a vulnerable dep is treated as unsafe. |"
+          echo "| Trusted-source scopes | ${SCOPES_TICKED} | Where the trusted-source rule applies. Other scopes (\`production\`, \`codegen-main\`) stay closed unless explicitly added. |"
+          echo "| Production build types | ${PROD_BT_TICKED} | Build types whose \`CompileClasspath\`/\`RuntimeClasspath\` configs count as production-shipping. |"
+          echo "| Production variants (override) | ${PROD_V_DISPLAY} | When non-empty, replaces \`production-build-types\` with an exact variant list. |"
+          echo "| Currency threshold | \`${THRESHOLD}\` | How close to the latest Maven release a trusted top-level must be. \`latest\` = exact match; \`same-minor\` = same \`major.minor\`. |"
+          echo "| Dry run | \`${DRY_RUN}\` | When \`true\`, decisions are logged but no alerts are dismissed. |"
+          echo ""
+          echo "## Decisions"
+          echo ""
+          echo "An alert is **dismissed** only when every reachable occurrence is in a safe configuration:"
+          echo ""
+          echo "- **Test source sets** (\`test*\`, \`*AndroidTest*\`, \`*UnitTest*\`)"
+          echo "- **Non-production variants** (build-type suffix not in \`production-build-types\`)"
+          echo "- **Build tooling** (lint checks, Detekt, Jacoco, Dokka, etc.)"
+          echo "- **Trusted-source transitives** in opted-in scopes, when the trusted top-level is current"
+          echo ""
+          echo "Otherwise the verdict is **skipped** — the alert stays open for human review. Occurrences in unreachable included-build modules are ignored. Click any alert number below to open it on GitHub."
+          echo ""
+          echo "| Alert | Package | Severity | Decision | Reason |"
+          echo "| ----- | ------- | -------- | -------- | ------ |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        while read -r ALERT; do
+          NUM=$(printf "%s" "${ALERT}" | jq -r '.number')
+          PKG=$(printf "%s" "${ALERT}" | jq -r '.dependency.package.name')
+          SEV=$(printf "%s" "${ALERT}" | jq -r '.security_advisory.severity')
+
+          RESULT=$(printf "%s" "${ALERT}" | python3 "$SCRIPTS_DIR/categorize-alert.py" \
+            --dep-map "${DEP_MAP}" \
+            --config "${CONFIG}" \
+            --currency-map "${CURRENCY}")
+
+          # categorize-alert.py emits plain text. The summary cell adds
+          # markdown for visual hierarchy; the dismissal comment uses the
+          # plain text verbatim (after truncation + run-URL append by the
+          # helper).
+          DECISION=$(printf "%s" "${RESULT}" | cut -f1)
+          REASON=$(printf "%s" "${RESULT}" | cut -f2)
+          DETAIL=$(printf "%s" "${RESULT}" | cut -f3-)
+
+          case "${DECISION}" in
+            dismiss) MARKER="✅ **Dismissed**" ;;
+            skip)    MARKER="❌ **Skipped**"   ;;
+            *)       MARKER="${DECISION}"      ;;
+          esac
+
+          ALERT_LINK="[#${NUM}](https://github.com/${REPO}/security/dependabot/${NUM})"
+
+          # Markdown-only formatting for the summary cell: bold the leading
+          # category clause (everything before the first " — "), and wrap
+          # comma-separated items in the configs detail in inline-code.
+          REASON_MD=$(printf "%s" "${REASON}" | sed -E 's/^([^—]+)( — )/**\1**\2/')
+          if [ -n "${DETAIL}" ]; then
+            # Wrap each item after "Configs: " in backticks.
+            DETAIL_MD=$(printf "%s" "${DETAIL}" | sed -E 's/Configs: /Configs: `/; s/, \+/`, +/; s/, ([^,+]+)/`, `\1/g; s/([^`])$/\1`/')
+            REASON_CELL="${REASON_MD}<br><sub><em>${DETAIL_MD}</em></sub>"
+          else
+            REASON_CELL="${REASON_MD}"
+          fi
+
+          printf "| %s | %s | %s | %s | %s |\n" \
+            "${ALERT_LINK}" "${PKG}" "${SEV}" "${MARKER}" "${REASON_CELL}" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${DECISION}" = "dismiss" ] && [ "${DRY_RUN}" != "true" ]; then
+            # The Dependabot Alerts API caps `dismissed_comment` at 280
+            # unicode characters. The helper truncates the body if needed
+            # and appends a link to this run for the audit trail.
+            RUN_URL="https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID}"
+            DISMISS_COMMENT=$(python3 "$SCRIPTS_DIR/format-dismissal-comment.py" \
+              "${REASON}" "${DETAIL}" "${RUN_URL}")
+            gh api -X PATCH "repos/${REPO}/dependabot/alerts/${NUM}" \
+              -f state=dismissed \
+              -f dismissed_reason=not_used \
+              -f dismissed_comment="${DISMISS_COMMENT}" >/dev/null
+          fi
+        done < <(jq -c '.[]' /tmp/dismiss-bot/alerts.json)
