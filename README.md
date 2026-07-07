@@ -148,7 +148,7 @@ jobs:
       - uses: infinum/android-github-actions-workflows/.github/actions/dismiss-dev-only-dependabot-alerts@main
         with:
           client-id: ${{ vars.DEPENDABOT_DISMISSER_BOT_APP_ID }}
-          app-private-key: ${{ secrets.DEPENDABOT_DISMISSER_APP_PRIVATE_KEY }}
+          app-private-key: ${{ secrets.DEPENDABOT_DISMISSER_BOT_PRIVATE_KEY }}
           dry-run: "false"
 ```
 
