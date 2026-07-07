@@ -129,7 +129,7 @@ jobs:
         id: token
         with:
           client-id: ${{ vars.DEPENDABOT_DISMISSER_BOT_APP_ID }}
-          private-key: ${{ secrets.DEPENDABOT_DISMISSER_APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.DEPENDABOT_DISMISSER_BOT_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
       - uses: actions/checkout@v6
         with:
