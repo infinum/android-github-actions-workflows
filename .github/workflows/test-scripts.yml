@@ -2,13 +2,7 @@ name: Test dismissal scripts
 
 on:
   push:
-    paths:
-      - "scripts/**"
-      - ".github/workflows/test-scripts.yml"
   pull_request:
-    paths:
-      - "scripts/**"
-      - ".github/workflows/test-scripts.yml"
 
 jobs:
   test:
