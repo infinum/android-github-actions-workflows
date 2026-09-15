@@ -22,3 +22,11 @@ jobs:
 
       - name: Run gather-deps.sh test
         run: bash scripts/tests/test_gather_deps.sh
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Run JavaScript action unit tests
+        run: node --test .github/actions/*/test/*.test.js
