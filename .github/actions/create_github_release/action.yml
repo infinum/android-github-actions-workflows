@@ -1,5 +1,5 @@
 name: 'Create GitHub release'
-description: 'Creates a GitHub release based on the pull request details'
+description: 'Creates the tag and the GitHub release in a single API call'
 inputs:
   updated_version:
     description: 'The updated version'
@@ -10,6 +10,14 @@ inputs:
   github_token:
     description: 'The GitHub token'
     required: true
+  target_commitish:
+    description: 'Commit the tag is created from. Defaults to GITHUB_SHA.'
+    required: false
+    default: ''
+
+outputs:
+  release_url:
+    description: 'URL of the created release, empty when it already existed'
 
 runs:
   using: 'node24'
