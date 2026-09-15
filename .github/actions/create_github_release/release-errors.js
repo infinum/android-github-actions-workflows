@@ -49,4 +49,40 @@ function checkCommitMatch({ tag, expectedSha, actualSha, strict }) {
   return { ok: true };
 }
 
-module.exports = { isAlreadyExistsError, checkCommitMatch };
+// Decides what to do about a duplicate 422, without ever touching the
+// network in lenient mode.
+//
+// resolveActualSha is a caller-supplied async lookup (normally "read the
+// tag ref, dereference it to a commit"). It must only be invoked when
+// strict is true: in lenient mode checkCommitMatch always returns
+// ok:true regardless of actualSha, so calling the lookup there would be
+// pure waste that can also fail for reasons unrelated to commit
+// verification (deleted tag ref, transient API error, missing
+// permissions) — and the six legacy callers, who never asked for strict
+// verification, must keep converging on a duplicate 422 even when that
+// lookup would have failed.
+//
+// In strict mode, a lookup failure is reported as a distinct, loud
+// failure ("could not verify") rather than folded into the "wrong
+// commit" message checkCommitMatch produces — an operator needs to tell
+// "we don't know what this tag points at" apart from "we know, and it's
+// wrong".
+async function resolveDuplicateOutcome({ tag, expectedSha, strict, resolveActualSha }) {
+  if (!strict) {
+    return { ok: true };
+  }
+
+  let actualSha;
+  try {
+    actualSha = await resolveActualSha();
+  } catch (error) {
+    return {
+      ok: false,
+      message: `Could not verify which commit tag ${tag} points at (release already exists): ${error.message}`
+    };
+  }
+
+  return checkCommitMatch({ tag, expectedSha, actualSha, strict });
+}
+
+module.exports = { isAlreadyExistsError, checkCommitMatch, resolveDuplicateOutcome };

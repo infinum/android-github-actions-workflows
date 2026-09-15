@@ -1,7 +1,7 @@
 const core = require('@actions/core');
 const github = require('@actions/github');
 const { context } = require('@actions/github');
-const { isAlreadyExistsError, checkCommitMatch } = require('./release-errors');
+const { isAlreadyExistsError, resolveDuplicateOutcome } = require('./release-errors');
 
 // Resolves a tag name to the commit SHA it actually points at. Handles both
 // lightweight tags (ref points straight at a commit) and annotated tags
@@ -57,10 +57,16 @@ async function run() {
       if (isAlreadyExistsError(error)) {
         // createRelease silently ignores target_commitish once the tag
         // already exists, so a 422 alone does not prove the existing
-        // release points at the commit we meant to publish. Resolve what
-        // the tag actually points at and let checkCommitMatch decide.
-        const actualSha = await resolveTagCommitSha(octokit, context.repo.owner, context.repo.repo, tag);
-        const result = checkCommitMatch({ tag, expectedSha: targetCommitish, actualSha, strict });
+        // release points at the commit we meant to publish. In strict
+        // mode, resolve what the tag actually points at and let
+        // resolveDuplicateOutcome decide; in lenient mode this never
+        // touches the network — see resolveDuplicateOutcome's comment.
+        const result = await resolveDuplicateOutcome({
+          tag,
+          expectedSha: targetCommitish,
+          strict,
+          resolveActualSha: () => resolveTagCommitSha(octokit, context.repo.owner, context.repo.repo, tag)
+        });
 
         if (!result.ok) {
           core.setFailed(result.message);
