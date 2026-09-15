@@ -145,7 +145,7 @@ test('hasSkipRelease detects the skip-release label', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `node --test .github/actions/get_pull_request_details/test/`
+Run: `node --test .github/actions/get_pull_request_details/test/*.test.js`
 Expected: FAIL — `Cannot find module '../pr-data'`
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -191,7 +191,7 @@ module.exports = { toPrData, deriveBumpFlags, hasSkipRelease };
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `node --test .github/actions/get_pull_request_details/test/`
+Run: `node --test .github/actions/get_pull_request_details/test/*.test.js`
 Expected: PASS — 7 tests
 
 - [ ] **Step 5: Rewrite index.js to use the module**
@@ -267,7 +267,11 @@ run();
 
 - [ ] **Step 6: Wire node tests into CI**
 
-In `.github/workflows/test-scripts.yml`, add `.github/actions/**` to both `paths:` filters, and append this step after the existing `Run gather-deps.sh test` step:
+In `.github/workflows/test-scripts.yml`, append these steps after the existing
+`Run gather-deps.sh test` step. Leave the `on:` block exactly as it is — this workflow
+has no `paths:` filters on `main` and runs on every push and pull request; adding one
+now would be an unrelated behaviour change that could regress triggering for the
+existing Python and bash suites:
 
 ```yaml
       - name: Set up Node
@@ -276,13 +280,16 @@ In `.github/workflows/test-scripts.yml`, add `.github/actions/**` to both `paths
           node-version: '24'
 
       - name: Run JavaScript action unit tests
-        run: node --test .github/actions/*/test/
+        run: node --test .github/actions/*/test/*.test.js
 ```
 
 - [ ] **Step 7: Run the full suite**
 
-Run: `node --test .github/actions/*/test/`
+Run: `node --test .github/actions/*/test/*.test.js`
 Expected: PASS
+
+Use the glob form, not `node --test <directory>` — the directory form crashes with
+`Cannot find module` on the Node versions in use here.
 
 - [ ] **Step 8: Commit**
 
@@ -341,7 +348,7 @@ Expected: 5 matches, all `node24`, no `node20` remaining.
 
 - [ ] **Step 4: Verify the unit tests still pass on the new runtime**
 
-Run: `node --test .github/actions/*/test/`
+Run: `node --test .github/actions/*/test/*.test.js`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -418,7 +425,7 @@ test('malformed errors do not throw', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `node --test .github/actions/create_github_release/test/`
+Run: `node --test .github/actions/create_github_release/test/*.test.js`
 Expected: FAIL — `Cannot find module '../release-errors'`
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -448,7 +455,7 @@ module.exports = { isAlreadyExistsError };
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `node --test .github/actions/create_github_release/test/`
+Run: `node --test .github/actions/create_github_release/test/*.test.js`
 Expected: PASS — 4 tests
 
 - [ ] **Step 5: Rewrite index.js**
@@ -536,8 +543,11 @@ runs:
 
 - [ ] **Step 7: Run the full suite**
 
-Run: `node --test .github/actions/*/test/`
+Run: `node --test .github/actions/*/test/*.test.js`
 Expected: PASS
+
+Use the glob form, not `node --test <directory>` — the directory form crashes with
+`Cannot find module` on the Node versions in use here.
 
 - [ ] **Step 8: Commit**
 
