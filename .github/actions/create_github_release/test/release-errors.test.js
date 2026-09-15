@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { isAlreadyExistsError } = require('../release-errors');
+const { isAlreadyExistsError, checkCommitMatch } = require('../release-errors');
 
 test('recognises the GitHub duplicate-release 422', () => {
   const error = {
@@ -37,4 +37,37 @@ test('malformed errors do not throw', () => {
   assert.strictEqual(isAlreadyExistsError({}), false);
   assert.strictEqual(isAlreadyExistsError({ status: 422 }), false);
   assert.strictEqual(isAlreadyExistsError(new Error('boom')), false);
+});
+
+test('checkCommitMatch: strict mode passes when SHAs match', () => {
+  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'abc123', strict: true });
+  assert.strictEqual(result.ok, true);
+});
+
+test('checkCommitMatch: strict mode fails when SHAs differ, naming tag and both SHAs', () => {
+  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'def456', strict: true });
+  assert.strictEqual(result.ok, false);
+  assert.match(result.message, /v1\.2\.3/);
+  assert.match(result.message, /abc123/);
+  assert.match(result.message, /def456/);
+});
+
+test('checkCommitMatch: lenient mode never fails, even when SHAs differ', () => {
+  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'def456', strict: false });
+  assert.strictEqual(result.ok, true);
+});
+
+test('checkCommitMatch: strict mode fails when a SHA is missing or undefined', () => {
+  assert.strictEqual(
+    checkCommitMatch({ tag: 'v1.2.3', expectedSha: undefined, actualSha: 'def456', strict: true }).ok,
+    false
+  );
+  assert.strictEqual(
+    checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: undefined, strict: true }).ok,
+    false
+  );
+  assert.strictEqual(
+    checkCommitMatch({ tag: 'v1.2.3', expectedSha: undefined, actualSha: undefined, strict: true }).ok,
+    false
+  );
 });
