@@ -1,4 +1,4 @@
-name: Test dismissal scripts
+name: Tests
 
 on:
   push:
