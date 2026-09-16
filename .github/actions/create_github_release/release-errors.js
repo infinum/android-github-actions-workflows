@@ -15,11 +15,8 @@ function isAlreadyExistsError(error) {
   return errors.some(entry => entry && entry.code === 'already_exists');
 }
 
-// Strict verification only applies when the caller explicitly asked for a
-// specific commit. Legacy callers never pass target_commitish: their tag is
-// created by an earlier step (push_version_tag) at a commit that is never
-// GITHUB_SHA by design, so a strict check would fail them every time. Keep
-// them on today's lenient behaviour.
+// True only when the caller explicitly supplied a target commit. See
+// resolveDuplicateOutcome below for why this distinction exists.
 function shouldUseStrictVerification(explicitTargetCommitish) {
   return Boolean(explicitTargetCommitish);
 }
@@ -27,8 +24,8 @@ function shouldUseStrictVerification(explicitTargetCommitish) {
 // Resolves a tag name to the commit SHA it actually points at. Handles both
 // lightweight tags (ref points straight at a commit) and annotated tags
 // (ref points at a tag object, which itself points at a commit). octokit is
-// injected so callers (and tests) can supply a stub, the same seam used by
-// resolveDuplicateOutcome's resolveActualSha parameter below.
+// injected so callers (and tests) can supply a stub — the same seam
+// resolveDuplicateOutcome uses for its resolveActualSha parameter below.
 async function resolveTagCommitSha(octokit, owner, repo, tag) {
   const { data: ref } = await octokit.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
   let sha = ref.object.sha;
@@ -43,23 +40,11 @@ async function resolveTagCommitSha(octokit, owner, repo, tag) {
   return sha;
 }
 
-// Decides whether a pre-existing tag/release is safe to treat as success.
-//
-// createRelease silently ignores target_commitish when the tag already
-// exists, so a duplicate 422 alone does not prove the existing release
-// points at the commit that was actually published to Maven Central. In
-// strict mode (target_commitish explicitly supplied by the caller) the
-// caller's intent is unambiguous, so we require the existing tag's
-// commit to match exactly. In lenient mode (legacy callers that never
-// pass target_commitish, relying on the GITHUB_SHA fallback) the tag is
-// always created by an earlier step in their pipeline at a commit that
-// is never GITHUB_SHA by design, so we keep the original tolerant
-// behaviour rather than break six repos that never asked for the strict
-// check.
-function checkCommitMatch({ tag, expectedSha, actualSha, strict }) {
-  if (!strict) {
-    return { ok: true };
-  }
+// Compares the commit a duplicate tag/release actually points at against
+// the commit that was expected, and reports whether they match. Pure
+// comparison only — whether this check should even run is
+// resolveDuplicateOutcome's decision, not this function's.
+function checkCommitMatch({ tag, expectedSha, actualSha }) {
   if (!expectedSha || !actualSha) {
     return {
       ok: false,
@@ -78,23 +63,31 @@ function checkCommitMatch({ tag, expectedSha, actualSha, strict }) {
 }
 
 // Decides what to do about a duplicate 422, without ever touching the
-// network in lenient mode.
+// network in lenient mode. This is the sole owner of the
+// strict-versus-lenient policy for the whole module.
+//
+// createRelease silently ignores target_commitish when the tag already
+// exists, so a duplicate 422 alone does not prove the existing release
+// points at the commit that was actually published to Maven Central. In
+// strict mode (target_commitish explicitly supplied by the caller) the
+// caller's intent is unambiguous, so we require the existing tag's commit
+// to match exactly. In lenient mode (legacy callers that never pass
+// target_commitish, relying on the GITHUB_SHA fallback) the tag is always
+// created by an earlier step in their pipeline at a commit that is never
+// GITHUB_SHA by design, so we keep the original tolerant behaviour rather
+// than break six repos that never asked for the strict check — the early
+// return below is what guarantees that, and it must never touch the
+// network or call resolveActualSha in lenient mode: the lookup can fail
+// for reasons unrelated to commit verification (deleted tag ref, transient
+// API error, missing permissions), and those six legacy callers must keep
+// converging on a duplicate 422 regardless.
 //
 // resolveActualSha is a caller-supplied async lookup (normally "read the
-// tag ref, dereference it to a commit"). It must only be invoked when
-// strict is true: in lenient mode checkCommitMatch always returns
-// ok:true regardless of actualSha, so calling the lookup there would be
-// pure waste that can also fail for reasons unrelated to commit
-// verification (deleted tag ref, transient API error, missing
-// permissions) — and the six legacy callers, who never asked for strict
-// verification, must keep converging on a duplicate 422 even when that
-// lookup would have failed.
-//
-// In strict mode, a lookup failure is reported as a distinct, loud
-// failure ("could not verify") rather than folded into the "wrong
-// commit" message checkCommitMatch produces — an operator needs to tell
-// "we don't know what this tag points at" apart from "we know, and it's
-// wrong".
+// tag ref, dereference it to a commit"), only ever invoked in strict mode.
+// A lookup failure there is reported as a distinct, loud failure ("could
+// not verify") rather than folded into the "wrong commit" message
+// checkCommitMatch produces — an operator needs to tell "we don't know
+// what this tag points at" apart from "we know, and it's wrong".
 async function resolveDuplicateOutcome({ tag, expectedSha, strict, resolveActualSha }) {
   if (!strict) {
     return { ok: true };
@@ -110,7 +103,7 @@ async function resolveDuplicateOutcome({ tag, expectedSha, strict, resolveActual
     };
   }
 
-  return checkCommitMatch({ tag, expectedSha, actualSha, strict });
+  return checkCommitMatch({ tag, expectedSha, actualSha });
 }
 
 module.exports = {

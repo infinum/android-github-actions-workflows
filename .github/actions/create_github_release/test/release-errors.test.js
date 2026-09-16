@@ -45,35 +45,30 @@ test('malformed errors do not throw', () => {
   assert.strictEqual(isAlreadyExistsError(new Error('boom')), false);
 });
 
-test('checkCommitMatch: strict mode passes when SHAs match', () => {
-  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'abc123', strict: true });
+test('checkCommitMatch: passes when SHAs match', () => {
+  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'abc123' });
   assert.strictEqual(result.ok, true);
 });
 
-test('checkCommitMatch: strict mode fails when SHAs differ, naming tag and both SHAs', () => {
-  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'def456', strict: true });
+test('checkCommitMatch: fails when SHAs differ, naming tag and both SHAs', () => {
+  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'def456' });
   assert.strictEqual(result.ok, false);
   assert.match(result.message, /v1\.2\.3/);
   assert.match(result.message, /abc123/);
   assert.match(result.message, /def456/);
 });
 
-test('checkCommitMatch: lenient mode never fails, even when SHAs differ', () => {
-  const result = checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: 'def456', strict: false });
-  assert.strictEqual(result.ok, true);
-});
-
-test('checkCommitMatch: strict mode fails when a SHA is missing or undefined', () => {
+test('checkCommitMatch: fails when a SHA is missing or undefined', () => {
   assert.strictEqual(
-    checkCommitMatch({ tag: 'v1.2.3', expectedSha: undefined, actualSha: 'def456', strict: true }).ok,
+    checkCommitMatch({ tag: 'v1.2.3', expectedSha: undefined, actualSha: 'def456' }).ok,
     false
   );
   assert.strictEqual(
-    checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: undefined, strict: true }).ok,
+    checkCommitMatch({ tag: 'v1.2.3', expectedSha: 'abc123', actualSha: undefined }).ok,
     false
   );
   assert.strictEqual(
-    checkCommitMatch({ tag: 'v1.2.3', expectedSha: undefined, actualSha: undefined, strict: true }).ok,
+    checkCommitMatch({ tag: 'v1.2.3', expectedSha: undefined, actualSha: undefined }).ok,
     false
   );
 });
