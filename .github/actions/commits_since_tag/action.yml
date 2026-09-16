@@ -1,14 +1,15 @@
 name: 'Find commits from tag until the HEAD'
-description: 'Finds the commits from the current tag until the HEAD'
+description: 'Finds the commits from the given tag until HEAD. With no tag, returns the full history.'
 
 inputs:
   tag:
-    description: 'The tag to find the commits from'
-    required: true
+    description: 'The tag to find the commits from. Empty means "no release yet".'
+    required: false
+    default: ''
 
 outputs:
   commits:
-    description: 'The commits from the tag until the HEAD separated by spaces'
+    description: 'The commits from the tag until HEAD, separated by spaces'
     value: ${{ steps.find_commits.outputs.commits }}
 
 runs:
@@ -20,8 +21,14 @@ runs:
       env:
         FIND_COMMITS_TAG: ${{ inputs.tag }}
       run: |
-        git fetch origin tag "$FIND_COMMITS_TAG"
-        commits=$(git log ${{ env.tag }}..HEAD --pretty=format:"%H" | tr '\n' ' ')
-        echo "commits=$commits" >> $GITHUB_ENV
-        echo "commits=$commits" >> $GITHUB_OUTPUT
+        set -euo pipefail
+        if [ -z "$FIND_COMMITS_TAG" ]; then
+          echo "No tag supplied; taking the full history."
+          commits=$(git log HEAD --pretty=format:"%H" | tr '\n' ' ')
+        else
+          git fetch origin tag "$FIND_COMMITS_TAG" --no-tags
+          commits=$(git log "$FIND_COMMITS_TAG"..HEAD --pretty=format:"%H" | tr '\n' ' ')
+        fi
+        echo "commits=$commits" >> "$GITHUB_ENV"
+        echo "commits=$commits" >> "$GITHUB_OUTPUT"
         echo "commits=$commits"

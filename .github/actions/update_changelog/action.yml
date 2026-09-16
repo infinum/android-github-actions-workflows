@@ -13,5 +13,5 @@ inputs:
     default: 'CHANGELOG.md'
 
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'index.js'
