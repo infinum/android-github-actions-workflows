@@ -58,6 +58,22 @@ assert_output "tags without a v prefix are accepted" \
   "[$(rel 0.3.0 false false),$(rel 0.2.0 false false)]" \
   "0.3.0" "0.3.0"
 
+assert_output "mixed prefixes: bare tag is highest" \
+  "[$(rel 9.0.0 false false),$(rel v1.0.0 false false)]" \
+  "9.0.0" "9.0.0"
+
+assert_output "mixed prefixes: v-prefixed tag is highest" \
+  "[$(rel 2.5.0 false false),$(rel v9.0.0 false false)]" \
+  "v9.0.0" "9.0.0"
+
+assert_output "mixed prefixes spanning double digits" \
+  "[$(rel v2.2.3 false false),$(rel 10.0.0 false false),$(rel v12.1.3 false false)]" \
+  "v12.1.3" "12.1.3"
+
+assert_output "base_tag preserves the original prefix exactly" \
+  "[$(rel v5.0.0 false false),$(rel 0.9.0 false false)]" \
+  "v5.0.0" "5.0.0"
+
 if [ "$FAILURES" -ne 0 ]; then
   echo "$FAILURES test(s) failed"
   exit 1

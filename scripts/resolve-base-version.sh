@@ -4,8 +4,14 @@
 # the highest released version.
 #
 # Drafts and prereleases are excluded, and tag names that are not plain
-# semver are ignored. Ordering uses `sort -V`, which compares digit runs
-# numerically — plain `sort` puts v12.1.3 before v2.2.3.
+# semver are ignored. Ordering uses `sort -V` on the normalised (v-stripped)
+# version, which compares digit runs numerically — plain `sort` puts v12.1.3
+# before v2.2.3. Sorting must ignore the `v` prefix entirely: `sort -V`
+# compares the leading non-digit run lexically before any numeric comparison,
+# so sorting on the raw tag text would put every bare tag (e.g. `9.0.0`)
+# below every v-prefixed tag (e.g. `v1.0.0`) regardless of actual value,
+# since 'v' (0x76) sorts above '9' (0x39). The original tag text (with
+# whatever prefix it had) is still what gets returned as base_tag.
 #
 # Deliberately NOT /releases/latest: that endpoint returns the most recently
 # published release by date, so a patch on an older line would regress the
@@ -32,7 +38,11 @@ if [ -z "$tags" ]; then
   exit 0
 fi
 
-base_tag="$(printf '%s\n' "$tags" | sort -V | tail -1)"
+base_tag="$(printf '%s\n' "$tags" \
+  | awk '{orig=$0; norm=$0; sub(/^v/, "", norm); print norm "\t" orig}' \
+  | sort -t "$(printf '\t')" -k1,1V \
+  | tail -1 \
+  | cut -f2)"
 
 echo "base_tag=$base_tag"
 echo "base_version=${base_tag#v}"
