@@ -10,13 +10,15 @@ trap cleanup EXIT
 # `-w '%{http_code}'` would), keyed off which list the requested URL is in.
 #   - PRESENT_FILE   -> 200
 #   - REDIRECT_FILE  -> 302 (regression case: a redirect must not read as "found")
-#   - FAIL_FILE      -> exits non-zero, prints nothing (transport failure)
+#   - FAIL_FILE      -> prints "000" and exits non-zero (transport failure, as
+#                        real curl does with -w on a connection failure)
 #   - anything else  -> 404
 mkdir -p "$TMP_DIR/bin"
 cat > "$TMP_DIR/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 url="${@: -1}"
 if grep -Fxq "$url" "$FAIL_FILE" 2>/dev/null; then
+  echo "000"
   exit 7
 fi
 if grep -Fxq "$url" "$REDIRECT_FILE" 2>/dev/null; then
