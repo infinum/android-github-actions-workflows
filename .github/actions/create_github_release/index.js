@@ -1,33 +1,12 @@
 const core = require('@actions/core');
 const github = require('@actions/github');
 const { context } = require('@actions/github');
-const { isAlreadyExistsError, resolveDuplicateOutcome } = require('./release-errors');
-
-// Resolves a tag name to the commit SHA it actually points at. Handles both
-// lightweight tags (ref points straight at a commit) and annotated tags
-// (ref points at a tag object, which itself points at a commit).
-async function resolveTagCommitSha(octokit, owner, repo, tag) {
-  const { data: ref } = await octokit.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
-  let sha = ref.object.sha;
-  let type = ref.object.type;
-
-  while (type === 'tag') {
-    const { data: tagObject } = await octokit.rest.git.getTag({ owner, repo, tag_sha: sha });
-    sha = tagObject.object.sha;
-    type = tagObject.object.type;
-  }
-
-  return sha;
-}
-
-// Strict verification only applies when the caller explicitly asked for a
-// specific commit. Legacy callers never pass target_commitish: their tag is
-// created by an earlier step (push_version_tag) at a commit that is never
-// GITHUB_SHA by design, so a strict check would fail them every time. Keep
-// them on today's lenient behaviour.
-function shouldUseStrictVerification(explicitTargetCommitish) {
-  return Boolean(explicitTargetCommitish);
-}
+const {
+  isAlreadyExistsError,
+  shouldUseStrictVerification,
+  resolveTagCommitSha,
+  resolveDuplicateOutcome
+} = require('./release-errors');
 
 async function run() {
   try {
@@ -88,8 +67,4 @@ async function run() {
   }
 }
 
-module.exports = { shouldUseStrictVerification, resolveTagCommitSha };
-
-if (require.main === module) {
-  run();
-}
+run();
