@@ -1645,6 +1645,10 @@ permissions:
 
 jobs:
   release:
+    # A published Maven Central version can never be withdrawn. workflow_dispatch
+    # allows any ref to be selected, so without this a dispatch from a feature
+    # branch would publish unmerged code under a real version and tag it.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -1726,6 +1730,11 @@ jobs:
 
       - name: Create tag and release
         id: record
+        # This step's `if:` carries no status function, so GitHub implicitly ANDs
+        # success() into it. That implicit success() is what guarantees no tag or
+        # release is ever created for a version that was not actually published —
+        # adding continue-on-error or always() to any step above would break that
+        # guarantee.
         if: >-
           steps.predeploy.outputs.updated_version &&
           inputs.dry_run != true
