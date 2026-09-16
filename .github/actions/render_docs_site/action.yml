@@ -1,0 +1,104 @@
+name: 'Render docs site'
+description: 'Renders a self-contained landing page and changelog around Dokka HTML output, without depending on Dokka styling'
+
+inputs:
+  github_token:
+    description: 'The GitHub token'
+    required: true
+  repository:
+    description: 'The repository to read releases from, as owner/name'
+    required: false
+    default: ${{ github.repository }}
+  docs_dir:
+    description: 'The Dokka HTML output directory to render the site into'
+    required: false
+    default: 'docs'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Locate scripts
+      shell: bash
+      run: echo "SCRIPTS_DIR=$(cd "$GITHUB_ACTION_PATH/../../../scripts" && pwd)" >> "$GITHUB_ENV"
+
+    - name: Render docs site
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ inputs.repository }}
+        DOCS_DIR: ${{ inputs.docs_dir }}
+      run: |
+        set -euo pipefail
+
+        WORK_DIR="$(mktemp -d)"
+        trap 'rm -rf "$WORK_DIR"' EXIT
+
+        mkdir -p "$DOCS_DIR"
+
+        # 1. Fetch releases.
+        RELEASES_JSON="$WORK_DIR/releases.json"
+        gh api "repos/$REPO/releases" --paginate --slurp \
+          | jq 'flatten(1)' > "$RELEASES_JSON"
+
+        # Discover the Dokka module directories before we overwrite anything
+        # in $DOCS_DIR, so links point at the real API reference pages.
+        mapfile -t MODULES < <("$SCRIPTS_DIR/discover-dokka-modules.sh" "$DOCS_DIR")
+
+        FIRST_MODULE=""
+        if [ "${#MODULES[@]}" -gt 0 ]; then
+          FIRST_MODULE="${MODULES[0]}"
+        fi
+
+        # 2. Render the changelog Markdown.
+        CHANGELOG_MD="$WORK_DIR/changelog.md"
+        "$SCRIPTS_DIR/render-changelog.sh" < "$RELEASES_JSON" > "$CHANGELOG_MD"
+
+        # 3. Convert to an HTML fragment with GitHub's own renderer, so it
+        # renders exactly as the Releases page does and we take on no
+        # Markdown dependency.
+        CHANGELOG_FRAGMENT="$WORK_DIR/changelog-fragment.html"
+        gh api --method POST /markdown -f mode=gfm -f text="$(cat "$CHANGELOG_MD")" \
+          > "$CHANGELOG_FRAGMENT"
+
+        # 4. Wrap the changelog fragment into a standalone page.
+        CHANGELOG_ARGS=(--title "Changelog" --active changelog)
+        if [ -n "$FIRST_MODULE" ]; then
+          CHANGELOG_ARGS+=(--api-href "$FIRST_MODULE/index.html")
+        fi
+        "$SCRIPTS_DIR/wrap-html-page.sh" "${CHANGELOG_ARGS[@]}" \
+          < "$CHANGELOG_FRAGMENT" > "$DOCS_DIR/changelog.html"
+
+        # 5. Build the landing page body and wrap it, overwriting Dokka's
+        # "All modules" page.
+        REPO_NAME="${REPO##*/}"
+        LATEST_VERSION="$(jq -r '.[0].tag_name // empty' "$RELEASES_JSON")"
+
+        LANDING_FRAGMENT="$WORK_DIR/landing-fragment.html"
+        {
+          if [ -n "$LATEST_VERSION" ]; then
+            printf '<p>Latest release: <code>%s</code></p>\n' "$LATEST_VERSION"
+          fi
+
+          if [ "${#MODULES[@]}" -gt 0 ]; then
+            echo "<h2>Modules</h2>"
+            echo "<ul>"
+            for module in "${MODULES[@]}"; do
+              printf '<li><code>com.infinum.android.common:%s</code> &mdash; <a href="%s/index.html">API reference</a></li>\n' \
+                "$module" "$module"
+            done
+            echo "</ul>"
+          fi
+
+          echo "<h2>More</h2>"
+          echo "<ul>"
+          echo '<li><a href="changelog.html">Changelog</a></li>'
+          printf '<li><a href="https://github.com/%s">%s on GitHub</a></li>\n' "$REPO" "$REPO"
+          echo "</ul>"
+        } > "$LANDING_FRAGMENT"
+
+        LANDING_ARGS=(--title "$REPO_NAME" --active overview)
+        if [ -n "$FIRST_MODULE" ]; then
+          LANDING_ARGS+=(--api-href "$FIRST_MODULE/index.html")
+        fi
+        "$SCRIPTS_DIR/wrap-html-page.sh" "${LANDING_ARGS[@]}" \
+          < "$LANDING_FRAGMENT" > "$DOCS_DIR/index.html"
