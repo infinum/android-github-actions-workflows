@@ -20,6 +20,15 @@ async function resolveTagCommitSha(octokit, owner, repo, tag) {
   return sha;
 }
 
+// Strict verification only applies when the caller explicitly asked for a
+// specific commit. Legacy callers never pass target_commitish: their tag is
+// created by an earlier step (push_version_tag) at a commit that is never
+// GITHUB_SHA by design, so a strict check would fail them every time. Keep
+// them on today's lenient behaviour.
+function shouldUseStrictVerification(explicitTargetCommitish) {
+  return Boolean(explicitTargetCommitish);
+}
+
 async function run() {
   try {
     const newVersion = core.getInput('updated_version');
@@ -27,12 +36,7 @@ async function run() {
     const changelog = core.getInput('changelog');
     const explicitTargetCommitish = core.getInput('target_commitish');
     const targetCommitish = explicitTargetCommitish || process.env.GITHUB_SHA;
-    // Strict verification only applies when the caller explicitly asked for
-    // a specific commit. Legacy callers never pass target_commitish: their
-    // tag is created by an earlier step (push_version_tag) at a commit that
-    // is never GITHUB_SHA by design, so a strict check would fail them
-    // every time. Keep them on today's lenient behaviour.
-    const strict = Boolean(explicitTargetCommitish);
+    const strict = shouldUseStrictVerification(explicitTargetCommitish);
 
     if (!targetCommitish) {
       core.setFailed('No target_commitish supplied and GITHUB_SHA is unset.');
@@ -84,4 +88,8 @@ async function run() {
   }
 }
 
-run();
+module.exports = { shouldUseStrictVerification, resolveTagCommitSha };
+
+if (require.main === module) {
+  run();
+}
