@@ -51,8 +51,8 @@ and tag are lost.
 Two of seven repos (`junit`, `ui`) still
 publish through legacy OSSRH at `https://oss.sonatype.org/service/local/staging/deploy/maven2`,
 which returns **HTTP 402** — OSSRH was sunset 2025-06-30. They also run JDK 17,
-Dokka V1, `checkout@v4`, `setup-java@v4`. Only `android-common-kotlin` is on
-vanniktech / Central Portal.
+Dokka V1, `checkout@v4`, `setup-java@v4`. The other five repos (`android`, `compose`,
+`coroutines`, `kotlin`, `view`) are on vanniktech / Central Portal.
 
 Those two need an OSSRH → Central Portal migration *in addition to* this work. It is
 tracked separately.
@@ -289,8 +289,9 @@ downstream failure differs by repo, and both outcomes are a pass:
 | the two OSSRH repos (`junit`, `ui`) | step 6, `Argument list too long` | step 7 `Deploy`, OSSRH **HTTP 402** |
 | `android-common-kotlin` | step 6, `Argument list too long` | step 8 `Commit and push changes`, **`GH013`** |
 
-This proves A1 works across repos without any repo publishing anything — the six cannot
-reach the push at all, and kotlin's deploy stages locally without reaching Central.
+This proves A1 works across repos without any repo publishing anything — the two OSSRH
+repos cannot reach the push at all, and kotlin's deploy stages locally without reaching
+Central.
 
 ### Phase 2 — new actions, referenced by nothing
 A5, A6, A7 plus their bash logic in `scripts/` and tests in `scripts/tests/`.
