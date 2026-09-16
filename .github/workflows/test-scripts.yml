@@ -29,6 +29,9 @@ jobs:
       - name: Run check-central-published.sh test
         run: bash scripts/tests/test_check_central_published.sh
 
+      - name: Run render-changelog.sh test
+        run: bash scripts/tests/test_render_changelog.sh
+
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
