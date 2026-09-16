@@ -1,0 +1,35 @@
+name: 'Render changelog'
+description: 'Renders GitHub Releases into a Markdown changelog file'
+
+inputs:
+  github_token:
+    description: 'The GitHub token'
+    required: true
+  repository:
+    description: 'The repository to read releases from, as owner/name'
+    required: false
+    default: ${{ github.repository }}
+  output_file:
+    description: 'Path to write the rendered changelog to'
+    required: false
+    default: 'docs/changelog.md'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Locate scripts
+      shell: bash
+      run: echo "SCRIPTS_DIR=$(cd "$GITHUB_ACTION_PATH/../../../scripts" && pwd)" >> "$GITHUB_ENV"
+
+    - name: Render changelog
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ inputs.repository }}
+        OUTPUT_FILE: ${{ inputs.output_file }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$(dirname "$OUTPUT_FILE")"
+        gh api "repos/$REPO/releases" --paginate --slurp \
+          | jq 'flatten(1)' \
+          | bash "$SCRIPTS_DIR/render-changelog.sh" > "$OUTPUT_FILE"
