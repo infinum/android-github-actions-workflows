@@ -1,0 +1,38 @@
+name: 'Check Maven Central publication'
+description: 'Reports whether every artifact of a version is already on Maven Central'
+
+inputs:
+  group:
+    description: 'Maven group id, e.g. com.infinum.android.common'
+    required: true
+  version:
+    description: 'Version to check'
+    required: true
+  artifacts:
+    description: 'Space-separated artifact ids'
+    required: true
+
+outputs:
+  published:
+    description: 'true when every artifact is already present'
+    value: ${{ steps.check.outputs.published }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Locate scripts
+      shell: bash
+      run: echo "SCRIPTS_DIR=$(cd "$GITHUB_ACTION_PATH/../../../scripts" && pwd)" >> "$GITHUB_ENV"
+
+    - name: Check Maven Central
+      id: check
+      shell: bash
+      env:
+        GROUP: ${{ inputs.group }}
+        VERSION: ${{ inputs.version }}
+        ARTIFACTS: ${{ inputs.artifacts }}
+      run: |
+        set -euo pipefail
+        # shellcheck disable=SC2086
+        bash "$SCRIPTS_DIR/check-central-published.sh" "$GROUP" "$VERSION" $ARTIFACTS \
+          | tee -a "$GITHUB_OUTPUT"

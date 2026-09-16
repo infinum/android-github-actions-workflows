@@ -26,6 +26,9 @@ jobs:
       - name: Run resolve-base-version.sh test
         run: bash scripts/tests/test_resolve_base_version.sh
 
+      - name: Run check-central-published.sh test
+        run: bash scripts/tests/test_check_central_published.sh
+
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
