@@ -271,8 +271,11 @@ every phase is reversible and cutover is deliberate.
 ### Phase 0 — baseline, read-only
 Record tags, releases, Central versions and CI state for all seven. Human check that
 cannot be automated: confirm `MAVEN_CENTRAL_USER` / `MAVEN_CENTRAL_PW` are Central
-**Portal** tokens, not OSSRH ones — they are org-level secrets shared with six repos
-still pointed at dead OSSRH.
+**Portal** tokens, not OSSRH ones. Note these are **repo-level** secrets — each repo
+holds its own copy, so confirming one says nothing about another. (Established
+2026-09-16 while debugging a signing failure: `android-common-view`'s
+`DEPLOY_IN_MEMORY_SIGNING_KEY` was malformed and unparseable while every other repo's
+worked.)
 
 ### Phase 1 — shared-action fixes (live for all 7)
 A1, A2, A3, A4.
@@ -420,4 +423,4 @@ its own reviewed PR per repo, reusing the now-proven shared actions.
 - **Release cadence.** Every merge to the default branch currently cuts a release, so each
   Renovate bump ships a minor version. Unchanged by this work; worth revisiting separately.
 - **Org-wide rollout of the OSSRH migration.** Sequencing and ownership for the remaining
-  six repos.
+  two repos, `junit` and `ui`.
