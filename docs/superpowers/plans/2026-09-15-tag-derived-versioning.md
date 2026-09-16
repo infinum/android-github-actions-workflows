@@ -2112,4 +2112,4 @@ command gh pr create --fill
 Two follow-ups, tracked separately and deliberately **not** in scope here:
 
 1. **Phase 9 — delete the deferred files.** Once the tech lead has reviewed the migration, delete `version.properties` and `CHANGELOG.md` from `android-common-kotlin` in their own PR.
-2. **Phase 10 — the other six repos.** `android`, `compose`, `coroutines`, `junit`, `ui` and `view` publish to OSSRH, which returns HTTP 402 since its 2025-06-30 sunset. Each needs an OSSRH → Central Portal migration *before* it can adopt this flow. One repo at a time, Portal migration as its own reviewed PR, reusing the actions this plan proves.
+2. **Phase 10 — the other two OSSRH repos.** `android`, `compose`, `coroutines`, `junit`, `ui` and `view` publish to OSSRH, which returns HTTP 402 since its 2025-06-30 sunset. Each needs an OSSRH → Central Portal migration *before* it can adopt this flow. One repo at a time, Portal migration as its own reviewed PR, reusing the actions this plan proves.

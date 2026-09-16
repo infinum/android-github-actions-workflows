@@ -48,14 +48,21 @@ and tag are lost.
 
 ### Out of scope, but blocking "everything green"
 
-Six of seven repos (`android`, `compose`, `coroutines`, `junit`, `ui`, `view`) still
+Two of seven repos (`junit`, `ui`) still
 publish through legacy OSSRH at `https://oss.sonatype.org/service/local/staging/deploy/maven2`,
 which returns **HTTP 402** — OSSRH was sunset 2025-06-30. They also run JDK 17,
 Dokka V1, `checkout@v4`, `setup-java@v4`. Only `android-common-kotlin` is on
 vanniktech / Central Portal.
 
-Those six need an OSSRH → Central Portal migration *in addition to* this work. It is
-tracked separately. This spec makes the pilot green; it cannot make the other six green.
+Those two need an OSSRH → Central Portal migration *in addition to* this work. It is
+tracked separately.
+
+**Corrected 2026-09-16:** an earlier revision of this document said *six* of seven repos
+were on legacy OSSRH. That came from local clones that were a year stale. Checked against
+the remote, the real split is **five on vanniktech / Central Portal** (`android`,
+`compose`, `coroutines`, `kotlin`, `view`) and **two on legacy OSSRH** (`junit`, `ui`).
+Phase 10 is therefore two repos, not six, and four repos beyond the pilot are ready for
+tag-derived versioning as soon as it is proven.
 
 ## Design
 
@@ -276,7 +283,7 @@ downstream failure differs by repo, and both outcomes are a pass:
 
 | repo | before A1 | after A1 |
 |---|---|---|
-| the six OSSRH repos | step 6, `Argument list too long` | step 7 `Deploy`, OSSRH **HTTP 402** |
+| the two OSSRH repos (`junit`, `ui`) | step 6, `Argument list too long` | step 7 `Deploy`, OSSRH **HTTP 402** |
 | `android-common-kotlin` | step 6, `Argument list too long` | step 8 `Commit and push changes`, **`GH013`** |
 
 This proves A1 works across repos without any repo publishing anything — the six cannot
@@ -377,7 +384,7 @@ B5, after Phase 6 so there is real release data to render.
 Tech lead reviews. B2/B3 (deleting `version.properties` and `CHANGELOG.md`) land as a
 separate PR.
 
-### Phase 10 — the other six
+### Phase 10 — the two OSSRH repos
 Blocked on the OSSRH → Central Portal migration. One repo at a time, Portal migration as
 its own reviewed PR per repo, reusing the now-proven shared actions.
 
