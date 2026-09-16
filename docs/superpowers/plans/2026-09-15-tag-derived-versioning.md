@@ -1632,15 +1632,23 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-# contents: write creates the tag and release.
-# actions: write dispatches the Pages rebuild, since a release created with
-# GITHUB_TOKEN emits no release:published event to trigger it.
+# contents: write     creates the tag and the GitHub release
+# actions: write      dispatches the Pages rebuild, since a release created with
+#                     GITHUB_TOKEN emits no release:published event to trigger it
+# pull-requests: read find_pull_requests / get_pull_request_details
+# issues: read        the GraphQL search in find_pull_requests treats PRs as issues
 permissions:
   contents: write
   actions: write
+  pull-requests: read
+  issues: read
 
 jobs:
   release:
+    # A published Maven Central version can never be withdrawn. workflow_dispatch
+    # allows any ref to be selected, so without this a dispatch from a feature
+    # branch would publish unmerged code under a real version and tag it.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -1698,6 +1706,14 @@ jobs:
           steps.predeploy.outputs.updated_version &&
           steps.guard.outputs.published != 'true' &&
           inputs.dry_run == true
+        # Signing credentials are required even here: the build calls
+        # signAllPublications(), which makes signing mandatory for every
+        # publication task, publishToMavenLocal included. Central *upload*
+        # credentials are deliberately absent — a dry run must not be able to
+        # reach Maven Central.
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.DEPLOY_IN_MEMORY_SIGNING_PASSWORD }}
         run: ./gradlew publishToMavenLocal -PreleaseVersion=${{ steps.predeploy.outputs.updated_version }} --no-parallel
 
       - name: Deploy to Maven Central
@@ -1714,6 +1730,11 @@ jobs:
 
       - name: Create tag and release
         id: record
+        # This step's `if:` carries no status function, so GitHub implicitly ANDs
+        # success() into it. That implicit success() is what guarantees no tag or
+        # release is ever created for a version that was not actually published —
+        # adding continue-on-error or always() to any step above would break that
+        # guarantee.
         if: >-
           steps.predeploy.outputs.updated_version &&
           inputs.dry_run != true
@@ -1732,6 +1753,13 @@ jobs:
 ```
 
 The Pages rebuild is dispatched explicitly because a release created with `GITHUB_TOKEN` emits no `release: published` event.
+
+**Both of the above were found by actually running the rehearsal in Task 10, not by
+review.** The first draft of this workflow declared only `contents: write`, and its
+dry-run step passed no signing credentials. Each failed on the first real run:
+`Resource not accessible by integration` from the GraphQL PR search, then
+`no configured signatory` from Gradle. Do not narrow the permissions block or strip
+the dry-run `env:` — both look like dead config and are not.
 
 `publishAndReleaseToMavenCentral` — not `publishMavenPublicationToMavenCentralRepository` — is what makes this step a real gate. The latter stages files locally, prints `Skipping deployment validation!` and exits 0 without publishing anything.
 
