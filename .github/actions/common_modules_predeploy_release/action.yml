@@ -1,0 +1,77 @@
+name: 'Predeploy for tag-derived releases'
+description: 'Resolves the base version from GitHub Releases, computes the next version and generates the changelog. Writes no files.'
+
+inputs:
+  github_token:
+    description: 'The GitHub token'
+    required: true
+
+outputs:
+  base_tag:
+    description: 'Tag of the release the next version is computed from'
+    value: ${{ steps.resolve.outputs.base_tag }}
+  base_version:
+    description: 'Version of that release, 0.0.0 when there is none'
+    value: ${{ steps.resolve.outputs.base_version }}
+  updated_version:
+    description: 'The computed next version'
+    value: ${{ steps.update_version.outputs.updated_version }}
+  changelog:
+    description: 'The generated changelog'
+    value: ${{ steps.generate_changelog.outputs.changelog }}
+  pr_numbers:
+    description: 'Pull request numbers since the base release'
+    value: ${{ steps.get_pull_requests.outputs.pr_numbers }}
+  pr_details:
+    description: 'Pull request details since the base release'
+    value: ${{ steps.get_pr_details.outputs.pr_details }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve base version from releases
+      id: resolve
+      uses: infinum/android-github-actions-workflows/.github/actions/resolve_base_version@main
+      with:
+        github_token: ${{ inputs.github_token }}
+
+    - name: Get commits since the base release
+      id: get_commits
+      uses: infinum/android-github-actions-workflows/.github/actions/commits_since_tag@main
+      with:
+        tag: ${{ steps.resolve.outputs.base_tag }}
+
+    - name: Get pull requests for commits
+      id: get_pull_requests
+      if: steps.get_commits.outputs.commits
+      uses: infinum/android-github-actions-workflows/.github/actions/find_pull_requests@main
+      with:
+        commits: ${{ steps.get_commits.outputs.commits }}
+        github_token: ${{ inputs.github_token }}
+
+    - name: Get pull request details
+      id: get_pr_details
+      if: steps.get_pull_requests.outputs.pr_numbers
+      uses: infinum/android-github-actions-workflows/.github/actions/get_pull_request_details@main
+      with:
+        pr_numbers: ${{ steps.get_pull_requests.outputs.pr_numbers }}
+        github_token: ${{ inputs.github_token }}
+
+    - name: Compute the next version
+      id: update_version
+      if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
+      uses: infinum/android-github-actions-workflows/.github/actions/update_version@main
+      with:
+        current_version: ${{ steps.resolve.outputs.base_version }}
+        breaking_change: ${{ steps.get_pr_details.outputs.is_breaking_change }}
+        new_feature: ${{ steps.get_pr_details.outputs.is_new_feature }}
+        bugfix: ${{ steps.get_pr_details.outputs.is_bugfix }}
+
+    - name: Generate the changelog
+      id: generate_changelog
+      if: steps.get_pull_requests.outputs.pr_numbers && steps.get_pr_details.outputs.pr_details != '[]'
+      uses: infinum/android-github-actions-workflows/.github/actions/generate_changelog@main
+      with:
+        pr_details: ${{ steps.get_pr_details.outputs.pr_details }}
+        current_version: ${{ steps.resolve.outputs.base_version }}
+        updated_version: ${{ steps.update_version.outputs.updated_version }}

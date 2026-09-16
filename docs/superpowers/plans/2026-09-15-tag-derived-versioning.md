@@ -664,7 +664,7 @@ command gh api repos/infinum/android-common-view/actions/runs/<run-id>/jobs \
 
 Expected: step 6 `Run predeploy steps using version.properties` is now **success**; step 7 `Deploy` is **failure** with OSSRH **HTTP 402**.
 
-This is a PASS. The 402 is the pre-existing dead-OSSRH problem, not a regression — those six repos cannot reach the push step at all.
+This is a PASS. The 402 is the pre-existing dead-OSSRH problem, not a regression — `junit` and `ui` cannot reach the push step at all.
 
 - [ ] **Step 4: Re-run a failed autodeploy on the pilot**
 
@@ -1820,7 +1820,7 @@ No code. **This is the irreversible step.** A published Maven Central version ca
 
 - [ ] **Step 1: Confirm the credentials are Central Portal tokens**
 
-Ask the repository owner to confirm `MAVEN_CENTRAL_USER` / `MAVEN_CENTRAL_PW` are Central **Portal** tokens, not OSSRH. They are org-level secrets shared with six repos still pointed at dead OSSRH. If they are OSSRH credentials, this step fails — safely, with no tag and no release.
+Ask the repository owner to confirm `MAVEN_CENTRAL_USER` / `MAVEN_CENTRAL_PW` are Central **Portal** tokens, not OSSRH. These are **repo-level** secrets — each repo holds its own copy, so confirming one says nothing about another. If they are OSSRH credentials, this step fails — safely, with no tag and no release.
 
 - [ ] **Step 2: Dispatch the real release**
 
@@ -2112,4 +2112,4 @@ command gh pr create --fill
 Two follow-ups, tracked separately and deliberately **not** in scope here:
 
 1. **Phase 9 — delete the deferred files.** Once the tech lead has reviewed the migration, delete `version.properties` and `CHANGELOG.md` from `android-common-kotlin` in their own PR.
-2. **Phase 10 — the other six repos.** `android`, `compose`, `coroutines`, `junit`, `ui` and `view` publish to OSSRH, which returns HTTP 402 since its 2025-06-30 sunset. Each needs an OSSRH → Central Portal migration *before* it can adopt this flow. One repo at a time, Portal migration as its own reviewed PR, reusing the actions this plan proves.
+2. **Phase 10 — the other two OSSRH repos.** `junit` and `ui` publish to OSSRH, which returns HTTP 402 since its 2025-06-30 sunset. Each needs an OSSRH → Central Portal migration *before* it can adopt this flow. One repo at a time, Portal migration as its own reviewed PR, reusing the actions this plan proves.

@@ -1,0 +1,43 @@
+name: 'Resolve base version'
+description: 'Resolves the highest released version from the GitHub Releases API'
+
+inputs:
+  github_token:
+    description: 'The GitHub token'
+    required: true
+  repository:
+    description: 'The repository to read releases from, as owner/name'
+    required: false
+    default: ${{ github.repository }}
+
+outputs:
+  base_tag:
+    description: 'Tag of the highest release, empty when there is none'
+    value: ${{ steps.resolve.outputs.base_tag }}
+  base_version:
+    description: 'Version of the highest release, 0.0.0 when there is none'
+    value: ${{ steps.resolve.outputs.base_version }}
+  has_release:
+    description: 'true when a qualifying release was found, false otherwise'
+    value: ${{ steps.resolve.outputs.has_release }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Locate scripts
+      shell: bash
+      run: echo "SCRIPTS_DIR=$(cd "$GITHUB_ACTION_PATH/../../../scripts" && pwd)" >> "$GITHUB_ENV"
+
+    - name: Resolve base version
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+        gh api "repos/$REPO/releases" --paginate --slurp \
+          | jq 'flatten(1)' > "$RUNNER_TEMP/releases.json"
+        bash "$SCRIPTS_DIR/resolve-base-version.sh" \
+          < "$RUNNER_TEMP/releases.json" \
+          | tee -a "$GITHUB_OUTPUT"
