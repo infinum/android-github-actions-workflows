@@ -10,12 +10,17 @@
 # output references Dokka's generated CSS/JS/assets or any external
 # resource — no external stylesheets, fonts, scripts, or images.
 #
+# The body fragment is the single source of the page's visible heading —
+# it must supply its own <h1> (the wrapper still styles it). --title only
+# sets the <title> element; the wrapper does not inject a heading.
+#
 # Usage:
 #   cat fragment.html | wrap-html-page.sh --title "Changelog" \
 #     [--active changelog] [--api-href kotlin/index.html] > changelog.html
 #
 # Options:
-#   --title <text>       Required. Used for <title> and the page heading.
+#   --title <text>       Required. Used for <title> only (and available
+#                         for the nav). Does not render a page heading.
 #   --active <nav-key>   Optional. One of: overview, api, changelog.
 #                         Marks the matching nav item as the current page.
 #   --api-href <href>    Optional. Href for the "API reference" nav item.
@@ -292,7 +297,6 @@ cat <<HTML
   </nav>
 </header>
 <main>
-<h1>${TITLE_ESCAPED}</h1>
 ${BODY_FRAGMENT}
 </main>
 </body>

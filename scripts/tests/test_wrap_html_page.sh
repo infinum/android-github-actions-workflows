@@ -36,15 +36,25 @@ assert_eq() {
 
 FRAGMENT='<p>Body fragment marker XYZZY with <strong>bold</strong> text.</p>'
 
-# --- Basic page: title, heading, fragment passthrough, doctype.
+# --- Basic page: title, fragment passthrough, doctype.
 BASIC="$(printf '%s' "$FRAGMENT" | bash "$SCRIPT" --title "My Title")"
 
 check "title appears in <title>" "$BASIC" "<title>My Title</title>"
-check "title appears as a heading" "$BASIC" "<h1>My Title</h1>"
 check "body fragment is passed through intact" "$BASIC" "$FRAGMENT"
 
 FIRST_LINE="$(printf '%s\n' "$BASIC" | head -1)"
 assert_eq "output starts with <!DOCTYPE html>" "<!DOCTYPE html>" "$FIRST_LINE"
+
+# --- The wrapper does not inject a heading of its own; the body fragment
+# is the single source of the visible <h1>.
+NO_HEADING_FRAGMENT='<p>No heading here, just a paragraph.</p>'
+NO_HEADING_OUT="$(printf '%s' "$NO_HEADING_FRAGMENT" | bash "$SCRIPT" --title "My Title")"
+refute "no <h1> when the body fragment has none" "$NO_HEADING_OUT" "<h1"
+
+WITH_HEADING_FRAGMENT='<h1>Body-supplied heading</h1><p>Some content.</p>'
+WITH_HEADING_OUT="$(printf '%s' "$WITH_HEADING_FRAGMENT" | bash "$SCRIPT" --title "My Title")"
+H1_COUNT="$(printf '%s' "$WITH_HEADING_OUT" | grep -o '<h1' | wc -l | tr -d ' ')"
+assert_eq "exactly one <h1> when the body fragment supplies one" "1" "$H1_COUNT"
 
 # --- No external network-fetched assets anywhere in the output.
 if printf '%s' "$BASIC" | grep -Eq 'https?://'; then

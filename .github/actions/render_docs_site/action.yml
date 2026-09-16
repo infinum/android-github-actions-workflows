@@ -75,6 +75,7 @@ runs:
 
         LANDING_FRAGMENT="$WORK_DIR/landing-fragment.html"
         {
+          printf '<h1>%s</h1>\n' "$REPO_NAME"
           if [ -n "$LATEST_VERSION" ]; then
             printf '<p>Latest release: <code>%s</code></p>\n' "$LATEST_VERSION"
           fi
