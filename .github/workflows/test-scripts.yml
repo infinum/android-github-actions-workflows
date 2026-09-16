@@ -32,6 +32,12 @@ jobs:
       - name: Run render-changelog.sh test
         run: bash scripts/tests/test_render_changelog.sh
 
+      - name: Run wrap-html-page.sh test
+        run: bash scripts/tests/test_wrap_html_page.sh
+
+      - name: Run discover-dokka-modules.sh test
+        run: bash scripts/tests/test_discover_dokka_modules.sh
+
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
