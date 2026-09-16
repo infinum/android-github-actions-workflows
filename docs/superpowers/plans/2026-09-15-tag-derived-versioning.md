@@ -2095,7 +2095,35 @@ renders release notes from the Releases API at build time instead."
 
 - [ ] **Step 7: Add the render step to the pilot's Pages workflow**
 
-In `infinum/android-common-kotlin`, in `.github/workflows/static.yml`, insert between `Generate documentation` and `Upload artifact`:
+`build.gradle.kts` (Task 15) only takes its version from `-PreleaseVersion` for
+tasks whose name contains "publish"; `dokkaGenerateHtml` doesn't match, so
+left alone it silently falls back to the `0.0.0-LOCAL` placeholder and Dokka
+stamps that into every generated page. Before this plan, `version.properties`
+supplied the version to every Gradle invocation for free — the tag-derived
+scheme removes that, so the docs build must now resolve and pass the version
+itself. *(This was found on the live docs site after the pilot shipped: the
+first cut of this task added the changelog step but left `Generate
+documentation` unpatched, and `https://infinum.github.io/android-common-kotlin/kotlin/index.html`
+showed `0.0.0-LOCAL` as the version.)*
+
+In `infinum/android-common-kotlin`, in `.github/workflows/static.yml`, insert
+a step before `Generate documentation` that resolves the last released
+version, and pass it to Dokka:
+
+```yaml
+      - name: Resolve the released version
+        id: version
+        uses: infinum/android-github-actions-workflows/.github/actions/resolve_base_version@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      # dokkaGenerateHtml doesn't match build.gradle.kts's isPublishing check, so
+      # without this flag it falls back to the 0.0.0-LOCAL placeholder and Dokka
+      # stamps that into every generated page.
+      - name: Generate documentation
+        run: ./gradlew dokkaGenerateHtml -PreleaseVersion=${{ steps.version.outputs.base_version }}
+```
+
+Then insert between `Generate documentation` and `Upload artifact`:
 
 ```yaml
       - name: Render the changelog
