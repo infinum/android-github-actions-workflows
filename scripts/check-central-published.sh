@@ -39,7 +39,8 @@ group_path="${GROUP//.//}"
 
 for artifact in "$@"; do
   url="$BASE_URL/$group_path/$artifact/$VERSION/$artifact-$VERSION.pom"
-  if ! curl -sfI --max-time 30 "$url" >/dev/null 2>&1; then
+  status="$(curl -sS -o /dev/null -w '%{http_code}' -I --max-time 30 "$url" || echo "000")"
+  if [ "$status" != "200" ]; then
     echo "published=false"
     exit 0
   fi
