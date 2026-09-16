@@ -5,17 +5,19 @@ SCRIPT="$(cd "$(dirname "$0")/.." && pwd)/resolve-base-version.sh"
 FAILURES=0
 
 assert_output() {
-  local name="$1" input="$2" expected_tag="$3" expected_version="$4"
-  local output tag version
+  local name="$1" input="$2" expected_tag="$3" expected_version="$4" expected_has_release="${5:-}"
+  local output tag version has_release
   output="$(printf '%s' "$input" | bash "$SCRIPT")"
   tag="$(printf '%s\n' "$output" | grep '^base_tag=' | cut -d= -f2-)"
   version="$(printf '%s\n' "$output" | grep '^base_version=' | cut -d= -f2-)"
-  if [ "$tag" = "$expected_tag" ] && [ "$version" = "$expected_version" ]; then
+  has_release="$(printf '%s\n' "$output" | grep '^has_release=' | cut -d= -f2-)"
+  if [ "$tag" = "$expected_tag" ] && [ "$version" = "$expected_version" ] \
+    && { [ -z "$expected_has_release" ] || [ "$has_release" = "$expected_has_release" ]; }; then
     echo "ok   - $name"
   else
     echo "FAIL - $name"
-    echo "       expected base_tag=$expected_tag base_version=$expected_version"
-    echo "       got      base_tag=$tag base_version=$version"
+    echo "       expected base_tag=$expected_tag base_version=$expected_version has_release=${expected_has_release:-<any>}"
+    echo "       got      base_tag=$tag base_version=$version has_release=$has_release"
     FAILURES=$((FAILURES + 1))
   fi
 }
@@ -24,7 +26,7 @@ rel() { printf '{"tag_name":"%s","draft":%s,"prerelease":%s}' "$1" "$2" "$3"; }
 
 assert_output "double-digit majors sort numerically" \
   "[$(rel v2.2.3 false false),$(rel v12.1.3 false false),$(rel v10.0.0 false false)]" \
-  "v12.1.3" "12.1.3"
+  "v12.1.3" "12.1.3" "true"
 
 assert_output "double-digit minors sort numerically" \
   "[$(rel v0.9.0 false false),$(rel v0.10.0 false false),$(rel v0.2.0 false false)]" \
@@ -44,11 +46,11 @@ assert_output "prereleases are ignored" \
 
 assert_output "no releases yields the 0.0.0 bootstrap" \
   "[]" \
-  "" "0.0.0"
+  "" "0.0.0" "false"
 
 assert_output "only drafts yields the 0.0.0 bootstrap" \
   "[$(rel v1.0.0 true false)]" \
-  "" "0.0.0"
+  "" "0.0.0" "false"
 
 assert_output "non-semver tag names are ignored" \
   "[$(rel v0.2.0 false false),$(rel nightly false false),$(rel v1.2 false false)]" \

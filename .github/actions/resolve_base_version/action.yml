@@ -17,6 +17,9 @@ outputs:
   base_version:
     description: 'Version of the highest release, 0.0.0 when there is none'
     value: ${{ steps.resolve.outputs.base_version }}
+  has_release:
+    description: 'true when a qualifying release was found, false otherwise'
+    value: ${{ steps.resolve.outputs.has_release }}
 
 runs:
   using: 'composite'
