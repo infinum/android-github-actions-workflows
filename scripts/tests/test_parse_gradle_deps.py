@@ -40,6 +40,10 @@ _internal-unified-test-platform-android-test-plugin-host-emulator-control - A co
 \\--- io.grpc:grpc-netty:1.69.1
      \\--- io.netty:netty-codec-http:4.1.110.Final
 
+dokkaHtmlGeneratorRuntimeResolver~internal - [Internal Dokka Configuration] Dokka Generator runtime classpath for html - will be used in Dokka Worker.
+\\--- org.jetbrains.dokka:dokka-base:2.2.0
+     \\--- org.freemarker:freemarker:2.3.32
+
 BUILD SUCCESSFUL in 1s
 
 > Task :buildEnvironment
@@ -147,10 +151,29 @@ class TestParser(unittest.TestCase):
             ["io.grpc:grpc-netty:1.69.1"],
         )
 
+    def test_tilde_suffixed_configuration_names_are_captured(self):
+        # Dokka 2 names its resolvable configurations `<name>~internal`.
+        deps = self._deps(":app", "dokkaHtmlGeneratorRuntimeResolver~internal")
+        self.assertEqual(
+            deps["org.freemarker:freemarker:2.3.32"],
+            ["org.jetbrains.dokka:dokka-base:2.2.0"],
+        )
+
 
 # A composite-build fixture: root + one included build (`:foreign`) with three
 # modules — one substituted in, one reachable transitively, one unreachable.
 COMPOSITE_FIXTURE = """\
+> Task :dependencies
+
+------------------------------------------------------------
+Root project 'demo'
+------------------------------------------------------------
+
+detekt - The detekt dependencies to be used for this project.
+\\--- io.gitlab.arturbosch.detekt:detekt-cli:1.23.8
+
+BUILD SUCCESSFUL in 1s
+
 > Task :app:dependencies
 
 ------------------------------------------------------------
@@ -243,6 +266,11 @@ class TestCompositeReachability(unittest.TestCase):
     def test_root_modules_are_reachable(self):
         self.assertTrue(self.out["projects"][":app"]["reachable"])
         self.assertTrue(self.out["projects"][":common"]["reachable"])
+
+    def test_root_project_is_reachable(self):
+        # The root project (`:`) is part of the root build even though no
+        # module references it.
+        self.assertTrue(self.out["projects"][":"]["reachable"])
 
     def test_substituted_module_is_reachable(self):
         # `:foreign:used` is reached via `com.example.lib:thing -> project :foreign:used`
