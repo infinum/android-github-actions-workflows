@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # gather-deps.sh — enumerate every module (root + included builds) and run
-# the `dependencies` task on each, plus `buildEnvironment` on the root for the
-# buildscript classpath.
+# the `dependencies` task on each and on the root project, plus
+# `buildEnvironment` on the root for the buildscript classpath.
 # Produces a single text file ready for downstream parsing.
 #
 # Usage:
@@ -83,11 +83,13 @@ if [ "$MODULE_COUNT" -gt 0 ]; then
     sed 's/^/      - /' "$MODULES_FILE"
 fi
 if [ "$MODULE_COUNT" -eq 0 ]; then
-    echo "    no subprojects detected; only root buildscript dependencies will be captured"
+    echo "    no subprojects detected; only root project and buildscript dependencies will be captured"
 fi
 
 echo "==> Building task list…"
-TASKS=(buildEnvironment)
+# The root project never appears as `Project ':…'` in `gradle projects`, so
+# add its `dependencies` task explicitly.
+TASKS=(buildEnvironment :dependencies)
 while IFS= read -r module; do
     TASKS+=("${module}:dependencies")
 done < "$MODULES_FILE"

@@ -79,6 +79,7 @@ grep -qx ":tooling" "$MODULES_FILE"
 grep -qx ":tooling:deps" "$MODULES_FILE"
 
 grep -qx "buildEnvironment" "$TASKS_LOG"
+grep -qx ":dependencies" "$TASKS_LOG"
 grep -qx ":app:dependencies" "$TASKS_LOG"
 grep -qx ":build-logic:dependencies" "$TASKS_LOG"
 grep -qx ":build-logic:conventions:dependencies" "$TASKS_LOG"

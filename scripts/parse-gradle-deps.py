@@ -53,8 +53,9 @@ from typing import Optional
 TASK_HEADER = re.compile(r"^> Task (\S+)(?:\s+.*)?$")
 TREE_LINE = re.compile(r"^([ |+\\]+)--- (.+)$")
 # A configuration header line: name [- description] [(n)]
-# Hyphenated config names exist in AGP internals; allow '-' in the identifier.
-CONFIG_HEADER = re.compile(r"^([_a-zA-Z][a-zA-Z0-9_-]*)(?:\s*-\s+.*)?(?:\s*\(n\))?$")
+# Hyphenated config names exist in AGP internals, and Dokka 2 suffixes its
+# resolvable configs with `~internal`; allow '-' and '~' in the identifier.
+CONFIG_HEADER = re.compile(r"^([_a-zA-Z][a-zA-Z0-9_~-]*)(?:\s*-\s+.*)?(?:\s*\(n\))?$")
 LEGEND_LINE = re.compile(r"^\([cnr*]\)\s")
 SKIP_STATUSES = {"UP-TO-DATE", "SKIPPED", "NO-SOURCE"}
 
@@ -225,13 +226,12 @@ def main() -> None:
                     current_task = task
                     current_project = task[: -len(":dependencies")] or ":"
                     in_buildscript = False
-                    if current_project not in (":", None):
-                        known_projects.add(current_project)
-                        # Ensure project entry exists for tagging even if all
-                        # configurations end up empty.
-                        result["projects"].setdefault(
-                            current_project, {"configurations": {}}
-                        )
+                    known_projects.add(current_project)
+                    # Ensure project entry exists for tagging even if all
+                    # configurations end up empty.
+                    result["projects"].setdefault(
+                        current_project, {"configurations": {}}
+                    )
                 elif task == ":buildEnvironment":
                     current_task = task
                     current_project = ":"
